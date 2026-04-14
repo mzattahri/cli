@@ -165,7 +165,7 @@ func (c *Command) Complete(w *TokenWriter, completed []string, partial string) e
 	}
 
 	if !strings.HasPrefix(partial, "-") {
-		return writeArgHint(w, &c.args, completed, &c.flags, &c.options)
+		return writeArgHint(w, &c.args, completed, &c.options)
 	}
 
 	return writeFlagEntries(w, &c.flags, &c.options, partial, c.NegateFlags)
@@ -260,7 +260,7 @@ func splitOptionValuePartial(partial string, flags *flagSpecs, options *optionSp
 
 // writeArgHint emits the next expected positional argument name as a
 // completion hint, if any remain.
-func writeArgHint(w *TokenWriter, args *argSpecs, completed []string, flags *flagSpecs, options *optionSpecs) error {
+func writeArgHint(w *TokenWriter, args *argSpecs, completed []string, options *optionSpecs) error {
 	if args == nil || len(args.specs) == 0 {
 		return nil
 	}

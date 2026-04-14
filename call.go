@@ -156,7 +156,7 @@ func (c *Call) ApplyDefaults() {
 // Context returns the call's context, defaulting to [context.Background]
 // if the call or its context is nil.
 func (c *Call) Context() context.Context {
-	if c == nil || c.ctx == nil {
+	if c.ctx == nil {
 		return context.Background()
 	}
 	return c.ctx

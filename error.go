@@ -27,19 +27,14 @@ type ExitError struct {
 // Error returns the underlying error message, or the empty string if
 // the underlying error is nil.
 func (e *ExitError) Error() string {
-	if e == nil || e.Err == nil {
+	if e.Err == nil {
 		return ""
 	}
 	return e.Err.Error()
 }
 
 // Unwrap returns the underlying error.
-func (e *ExitError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.Err
-}
+func (e *ExitError) Unwrap() error { return e.Err }
 
 // exitCode maps err to a process exit code: 0 for nil, [ExitHelp] for
 // [ErrHelp], the wrapped code for [ExitError], and [ExitFailure] for

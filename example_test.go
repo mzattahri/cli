@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/mzattahri/cli"
 	"github.com/mzattahri/cli/clitest"
@@ -281,6 +282,45 @@ func ExampleCompletionRunner() {
 	fmt.Print(stdout.String())
 	// Output:
 	// greet	Print a greeting
+}
+
+func ExampleCommand_Completer() {
+	hosts := []string{"prod.example.com", "staging.example.com", "dev.example.com"}
+
+	cmd := &cli.Command{
+		Run: func(out *cli.Output, call *cli.Call) error {
+			_, err := fmt.Fprintf(out.Stdout, "host=%s", call.Options.Get("host"))
+			return err
+		},
+		// Completer provides tab completions for option values.
+		// At value position (e.g. "--host <TAB>"), Command.Complete
+		// delegates here with completed ending in the option token.
+		Completer: cli.CompleterFunc(func(w *cli.TokenWriter, completed []string, partial string) error {
+			if len(completed) == 0 || completed[len(completed)-1] != "--host" {
+				return nil
+			}
+			for _, h := range hosts {
+				if strings.HasPrefix(h, partial) {
+					w.WriteToken(h, "")
+				}
+			}
+			return nil
+		}),
+	}
+	cmd.Option("host", "H", "", "Target host")
+
+	mux := cli.NewMux("app")
+	mux.Handle("deploy", "Deploy the app", cmd)
+	mux.Handle("complete", "Output completions", cli.CompletionRunner(mux))
+
+	var stdout bytes.Buffer
+	program := &cli.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}}
+
+	// "--host <TAB>" with partial "sta" completes to staging.
+	_ = program.Invoke(context.Background(), mux, []string{"app", "complete", "--", "deploy", "--host", "sta"})
+	fmt.Print(stdout.String())
+	// Output:
+	// staging.example.com
 }
 
 func ExampleEnvMiddleware() {

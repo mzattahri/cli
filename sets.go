@@ -6,6 +6,17 @@ import (
 	"strings"
 )
 
+// checkCrossCollision panics if name or short collide with a different
+// input kind (e.g. a flag name matching an existing option name).
+func checkCrossCollision(name, short string, hasName func(string) bool, hasShort func(string) bool) {
+	if hasName(name) {
+		panic("cli: duplicate input " + `"` + name + `"`)
+	}
+	if short != "" && hasShort(short) {
+		panic("cli: duplicate short input " + `"` + short + `"`)
+	}
+}
+
 // validateInputSpec checks name and short for common input-declaration
 // constraints. It panics on empty names, invalid characters, reserved
 // names, and duplicates reported by hasName/hasShort. It returns the
@@ -284,7 +295,7 @@ func (s OptionSet) String() string {
 	var pairs []string
 	for k, vals := range s {
 		for _, v := range vals {
-			pairs = append(pairs, fmt.Sprintf("--%s %s", k, v))
+			pairs = append(pairs, fmt.Sprintf("--%s %s", k, quoteToken(v)))
 		}
 	}
 	slices.Sort(pairs)
@@ -353,7 +364,7 @@ type ArgSet map[string]string
 func (s ArgSet) String() string {
 	var pairs []string
 	for k, v := range s {
-		pairs = append(pairs, fmt.Sprintf("<%s> %s", k, v))
+		pairs = append(pairs, fmt.Sprintf("<%s> %s", k, quoteToken(v)))
 	}
 	slices.Sort(pairs)
 	return strings.Join(pairs, " ")

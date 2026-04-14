@@ -234,6 +234,53 @@ func TestCompleteNoArgs(t *testing.T) {
 	}
 }
 
+// --- Negated flag completion ---
+
+func TestCompleteNegatedFlags(t *testing.T) {
+	mux := NewMux("myapp")
+	cmd := &Command{
+		NegateFlags: true,
+		Run:         func(out *Output, call *Call) error { return nil },
+	}
+	cmd.Flag("verbose", "v", false, "verbose output")
+	cmd.Flag("no-cache", "", true, "disable cache")
+	mux.Handle("build", "Build", cmd)
+
+	t.Run("--no- prefix completes negated form", func(t *testing.T) {
+		lines := runComplete(t, mux, "build", "--no-")
+		vals := completionValues(lines)
+		assertContains(t, vals, "--no-verbose")
+		assertContains(t, vals, "--no-cache")
+	})
+
+	t.Run("bare form of no- flag completes", func(t *testing.T) {
+		lines := runComplete(t, mux, "build", "--ca")
+		vals := completionValues(lines)
+		assertContains(t, vals, "--cache")
+	})
+
+	t.Run("all forms present in full listing", func(t *testing.T) {
+		lines := runComplete(t, mux, "build", "--")
+		vals := completionValues(lines)
+		assertContains(t, vals, "--verbose")
+		assertContains(t, vals, "--no-verbose")
+		assertContains(t, vals, "--no-cache")
+		assertContains(t, vals, "--cache")
+		assertContains(t, vals, "--help")
+	})
+}
+
+func TestCompleteNegatedFlagsMux(t *testing.T) {
+	mux := NewMux("myapp")
+	mux.NegateFlags = true
+	mux.Flag("verbose", "v", false, "verbose output")
+	mux.Handle("run", "Run", RunnerFunc(func(out *Output, call *Call) error { return nil }))
+
+	lines := runComplete(t, mux, "--no")
+	vals := completionValues(lines)
+	assertContains(t, vals, "--no-verbose")
+}
+
 // --- Mounted mux scoped flags ---
 
 func TestCompleteMountedMuxScopedFlags(t *testing.T) {

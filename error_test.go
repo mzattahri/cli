@@ -27,6 +27,28 @@ func TestExitCode(t *testing.T) {
 	}
 }
 
+func TestExitErrorMessage(t *testing.T) {
+	t.Run("with error", func(t *testing.T) {
+		e := &ExitError{Code: 1, Err: errors.New("boom")}
+		if got := e.Error(); got != "boom" {
+			t.Fatalf("got %q, want %q", got, "boom")
+		}
+	})
+	t.Run("nil error", func(t *testing.T) {
+		e := &ExitError{Code: 0}
+		if got := e.Error(); got != "" {
+			t.Fatalf("got %q, want empty", got)
+		}
+	})
+	t.Run("unwrap", func(t *testing.T) {
+		inner := errors.New("inner")
+		e := &ExitError{Code: 1, Err: inner}
+		if got := e.Unwrap(); got != inner {
+			t.Fatalf("got %v, want %v", got, inner)
+		}
+	})
+}
+
 func TestExitCodeConstants(t *testing.T) {
 	tests := []struct {
 		name string

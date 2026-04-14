@@ -25,9 +25,6 @@ func (o *Output) Write(p []byte) (int, error) {
 
 // Flush flushes Stdout and Stderr if either implements [Flusher].
 func (o *Output) Flush() error {
-	if o == nil {
-		return nil
-	}
 	if err := flushWriter(o.Stdout); err != nil {
 		return err
 	}
@@ -88,12 +85,7 @@ type Command struct {
 // An empty string means the flag has no short form.
 // It panics on duplicate or reserved names.
 func (c *Command) Flag(name, short string, value bool, usage string) {
-	if c.options.hasName(name) {
-		panic("cli: duplicate command input " + `"` + name + `"`)
-	}
-	if short != "" && c.options.hasShort(short) {
-		panic("cli: duplicate command short input " + `"` + short + `"`)
-	}
+	checkCrossCollision(name, short, c.options.hasName, c.options.hasShort)
 	c.flags.add(name, short, value, usage)
 }
 
@@ -103,12 +95,7 @@ func (c *Command) Flag(name, short string, value bool, usage string) {
 // An empty string means the option has no short form.
 // It panics on duplicate or reserved names.
 func (c *Command) Option(name, short, value, usage string) {
-	if c.flags.hasName(name) {
-		panic("cli: duplicate command input " + `"` + name + `"`)
-	}
-	if short != "" && c.flags.hasShort(short) {
-		panic("cli: duplicate command short input " + `"` + short + `"`)
-	}
+	checkCrossCollision(name, short, c.flags.hasName, c.flags.hasShort)
 	c.options.add(name, short, value, usage)
 }
 

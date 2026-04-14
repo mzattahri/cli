@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -100,7 +101,7 @@ func TestCallWithContextPanicsOnNilContext(t *testing.T) {
 			t.Fatal("expected panic")
 		}
 	}()
-	NewCall(context.Background(), nil).WithContext(nil)
+	NewCall(context.Background(), nil).WithContext(nil) //nolint:staticcheck // intentional nil context to test panic
 }
 
 func TestCommandRejectsFlagOptionNameCollision(t *testing.T) {
@@ -109,7 +110,7 @@ func TestCommandRejectsFlagOptionNameCollision(t *testing.T) {
 
 	defer func() {
 		got := recover()
-		if got == nil || !strings.Contains(fmt.Sprint(got), `duplicate command input "name"`) {
+		if got == nil || !strings.Contains(fmt.Sprint(got), `duplicate input "name"`) {
 			t.Fatalf("got panic %v", got)
 		}
 	}()
@@ -267,4 +268,45 @@ func TestChain(t *testing.T) {
 	if !slices.Equal(seen, want) {
 		t.Fatalf("got %v, want %v", seen, want)
 	}
+}
+
+func TestOutputWrite(t *testing.T) {
+	var buf bytes.Buffer
+	out := &Output{Stdout: &buf, Stderr: io.Discard}
+	n, err := out.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Fatalf("got %d, want 5", n)
+	}
+	if got := buf.String(); got != "hello" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestValidateRunnerPanicsOnNilRunner(t *testing.T) {
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("expected panic")
+		}
+		if s, ok := got.(string); !ok || !strings.Contains(s, "nil command runner") {
+			t.Fatalf("got panic %v", got)
+		}
+	}()
+	validateRunner(nil)
+}
+
+func TestValidateRunnerPanicsOnNilRun(t *testing.T) {
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("expected panic")
+		}
+		if s, ok := got.(string); !ok || !strings.Contains(s, "nil command handler") {
+			t.Fatalf("got panic %v", got)
+		}
+	}()
+	validateRunner(&Command{})
 }

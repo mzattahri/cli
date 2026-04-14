@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -41,7 +42,7 @@ func FuzzParseInput(f *testing.F) {
 	options.add("output", "o", "", "output path")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		args := splitTestArgs(input)
+		args := strings.Fields(input)
 		// Must not panic.
 		parseInput(flags, options, args, false)
 	})
@@ -57,7 +58,7 @@ func FuzzParseInputNilSets(f *testing.F) {
 	f.Add("--help")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		args := splitTestArgs(input)
+		args := strings.Fields(input)
 		// Must not panic with nil flag/option sets.
 		parseInput(nil, nil, args, false)
 	})
@@ -76,33 +77,9 @@ func FuzzArgSetParse(f *testing.F) {
 	as.add("target", "the target")
 
 	f.Fuzz(func(t *testing.T, input string) {
-		args := splitTestArgs(input)
+		args := strings.Fields(input)
 		// Must not panic.
 		as.parse(args, false)
 		as.parse(args, true)
 	})
-}
-
-// splitTestArgs splits a string into args on whitespace, matching how
-// shells tokenize. An empty string produces a nil slice.
-func splitTestArgs(s string) []string {
-	if s == "" {
-		return nil
-	}
-	var args []string
-	start := -1
-	for i := 0; i < len(s); i++ {
-		if s[i] == ' ' || s[i] == '\t' {
-			if start >= 0 {
-				args = append(args, s[start:i])
-				start = -1
-			}
-		} else if start < 0 {
-			start = i
-		}
-	}
-	if start >= 0 {
-		args = append(args, s[start:])
-	}
-	return args
 }

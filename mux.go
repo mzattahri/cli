@@ -147,12 +147,7 @@ func NewMux(name string) *Mux {
 // An empty string means the flag has no short form.
 // It panics on duplicate or reserved names.
 func (m *Mux) Flag(name, short string, value bool, usage string) {
-	if m.options.hasName(name) {
-		panic("cli: duplicate mux input " + `"` + name + `"`)
-	}
-	if short != "" && m.options.hasShort(short) {
-		panic("cli: duplicate mux short input " + `"` + short + `"`)
-	}
+	checkCrossCollision(name, short, m.options.hasName, m.options.hasShort)
 	m.flags.add(name, short, value, usage)
 }
 
@@ -163,12 +158,7 @@ func (m *Mux) Flag(name, short string, value bool, usage string) {
 // An empty string means the option has no short form.
 // It panics on duplicate or reserved names.
 func (m *Mux) Option(name, short, value, usage string) {
-	if m.flags.hasName(name) {
-		panic("cli: duplicate mux input " + `"` + name + `"`)
-	}
-	if short != "" && m.flags.hasShort(short) {
-		panic("cli: duplicate mux short input " + `"` + short + `"`)
-	}
+	checkCrossCollision(name, short, m.flags.hasName, m.flags.hasShort)
 	m.options.add(name, short, value, usage)
 }
 
@@ -188,9 +178,10 @@ func (m *Mux) muxInputs() (*flagSpecs, *optionSpecs) {
 // summary shown in help output.
 //
 // Pattern segments are split on whitespace. Multi-segment patterns create
-// nested command paths (e.g. "repo init"). If runner is a [*Mux], it is
-// mounted as a sub-mux at pattern. It panics on conflicting registrations
-// or a nil runner.
+// nested command paths (e.g. "repo init"). An empty pattern registers a
+// root handler invoked when no subcommand matches. If runner is a [*Mux],
+// it is mounted as a sub-mux at pattern. It panics on conflicting
+// registrations or a nil runner.
 func (m *Mux) Handle(pattern string, usage string, runner Runner) {
 	if sub, ok := runner.(*Mux); ok {
 		m.mount(pattern, usage, sub)

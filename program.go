@@ -14,6 +14,8 @@ import (
 //
 //	program.Invoke(cli.Signal(), runner, os.Args)
 //
+// The stop function from [signal.NotifyContext] is intentionally
+// discarded: the signal registration lives for the process lifetime.
 // In tests, use [context.TODO] instead. For other signals, use
 // [signal.NotifyContext] directly.
 func Signal() context.Context {

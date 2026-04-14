@@ -98,7 +98,8 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 	if help == nil {
 		panic("cli: nil help")
 	}
-	slices.SortFunc(help.Commands, func(a, b helpCommand) int {
+	commands := slices.Clone(help.Commands)
+	slices.SortFunc(commands, func(a, b helpCommand) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
 	if help.Usage != "" {
@@ -117,7 +118,7 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 	}
 
 	line := "  " + help.FullPath
-	if len(help.Commands) > 0 {
+	if len(commands) > 0 {
 		line += " [command]"
 	}
 	if len(help.Flags) > 0 || len(help.Options) > 0 {
@@ -165,12 +166,12 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		}
 	}
 
-	if len(help.Commands) > 0 {
+	if len(commands) > 0 {
 		if _, err := io.WriteString(w, "\nCommands:\n"); err != nil {
 			return err
 		}
-		rows := make([]helpRow, 0, len(help.Commands))
-		for _, cmd := range help.Commands {
+		rows := make([]helpRow, 0, len(commands))
+		for _, cmd := range commands {
 			rows = append(rows, helpRow{Name: cmd.Name, Usage: cmd.Usage})
 		}
 		if err := renderHelpTable(w, rows); err != nil {

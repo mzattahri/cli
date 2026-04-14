@@ -81,6 +81,15 @@ func TestOptionSet(t *testing.T) {
 			t.Errorf("got %q, want %q", got, want)
 		}
 	})
+
+	t.Run("StringQuotesSpecialValues", func(t *testing.T) {
+		s := OptionSet{"name": {"hello world"}}
+		got := s.String()
+		want := `--name "hello world"`
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
 }
 
 func TestArgSet(t *testing.T) {
@@ -96,10 +105,31 @@ func TestArgSet(t *testing.T) {
 		if s.Get("missing") != "" { t.Errorf("got %q", s.Get("missing")) }
 	})
 
+	t.Run("Set", func(t *testing.T) {
+		s := ArgSet{}
+		s.Set("name", "alice")
+		if got := s.Get("name"); got != "alice" {
+			t.Fatalf("got %q, want %q", got, "alice")
+		}
+		s.Set("name", "bob")
+		if got := s.Get("name"); got != "bob" {
+			t.Fatalf("got %q after overwrite, want %q", got, "bob")
+		}
+	})
+
 	t.Run("String", func(t *testing.T) {
 		got := s.String()
 		// Alphabetical order because it's a map
 		want := "<name> test <path> /tmp"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("StringQuotesSpecialValues", func(t *testing.T) {
+		s := ArgSet{"path": "/my dir/file"}
+		got := s.String()
+		want := `<path> "/my dir/file"`
 		if got != want {
 			t.Errorf("got %q, want %q", got, want)
 		}

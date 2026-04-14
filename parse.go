@@ -30,6 +30,9 @@ func (c *tokenCursor) done() bool {
 	return c.pos >= len(c.tokens)
 }
 
+// peek returns the current token without advancing. Callers must
+// check [tokenCursor.done] first; the empty string returned for an
+// exhausted cursor is a convenience, not a distinct sentinel.
 func (c *tokenCursor) peek() string {
 	if c.done() {
 		return ""

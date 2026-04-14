@@ -163,3 +163,31 @@ func TestCallSupportsDirectInputs(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+func TestRecorderLen(t *testing.T) {
+	r := clitest.NewRecorder()
+	if r.Len() != 0 {
+		t.Fatalf("got %d, want 0", r.Len())
+	}
+	r.Stdout.WriteString("hello")
+	r.Stderr.WriteString("err")
+	if got := r.Len(); got != 8 {
+		t.Fatalf("got %d, want 8", got)
+	}
+}
+
+func TestRecorderReset(t *testing.T) {
+	r := clitest.NewRecorder()
+	r.Stdout.WriteString("hello")
+	r.Stderr.WriteString("err")
+	r.Reset()
+	if r.Len() != 0 {
+		t.Fatalf("got %d after reset, want 0", r.Len())
+	}
+	if r.Stdout.String() != "" {
+		t.Fatal("stdout not empty after reset")
+	}
+	if r.Stderr.String() != "" {
+		t.Fatal("stderr not empty after reset")
+	}
+}
