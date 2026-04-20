@@ -26,8 +26,8 @@ type Mux struct {
 }
 
 type ancestorHelp struct {
-	flags   []helpFlag
-	options []helpOption
+	flags   []HelpFlag
+	options []HelpOption
 }
 
 // node is an internal trie node for command routing.
@@ -81,11 +81,11 @@ func (n *node) childInfos(prefix string) []nodeChild {
 	return children
 }
 
-func (n *node) usageCommands(prefix string) []helpCommand {
+func (n *node) usageCommands(prefix string) []HelpCommand {
 	children := n.childInfos(prefix)
-	cmds := make([]helpCommand, 0, len(children))
+	cmds := make([]HelpCommand, 0, len(children))
 	for _, child := range children {
-		cmds = append(cmds, helpCommand{
+		cmds = append(cmds, HelpCommand{
 			Name:        child.path,
 			Usage:       child.usage,
 			Description: child.description,
@@ -277,12 +277,12 @@ func (m *Mux) runWithPath(out *Output, call *Call, fullPath string, usage string
 
 // accumulateHelp merges ancestor help entries with the current mux's
 // flag and option entries, marking all as global.
-func accumulateHelp(ancestors *ancestorHelp, fs *flagSpecs, os *optionSpecs, negateFlags bool) ([]helpFlag, []helpOption) {
-	flags := append(append([]helpFlag(nil), ancestors.flags...), fs.helpEntriesNegatable(negateFlags)...)
+func accumulateHelp(ancestors *ancestorHelp, fs *flagSpecs, os *optionSpecs, negateFlags bool) ([]HelpFlag, []HelpOption) {
+	flags := append(append([]HelpFlag(nil), ancestors.flags...), fs.helpEntriesNegatable(negateFlags)...)
 	for i := range flags {
 		flags[i].Global = true
 	}
-	options := append(append([]helpOption(nil), ancestors.options...), os.helpEntries()...)
+	options := append(append([]HelpOption(nil), ancestors.options...), os.helpEntries()...)
 	for i := range options {
 		options[i].Global = true
 	}
@@ -336,8 +336,8 @@ type dispatch struct {
 	path          string
 	usage         string
 	description   string
-	globalFlags   []helpFlag
-	globalOptions []helpOption
+	globalFlags   []HelpFlag
+	globalOptions []HelpOption
 	helpFunc      HelpFunc
 }
 
@@ -453,7 +453,7 @@ func (d *dispatch) renderHelp(h helpCall) error {
 		Options:     options,
 	}
 	if h.args != nil {
-		help.Arguments = h.args.helpArguments()
+		help.Arguments = h.args.HelpArguments()
 	}
 	if n.command != nil {
 		help.CaptureRest = n.command.CaptureRest

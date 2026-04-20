@@ -17,10 +17,10 @@ func runMux(ctx context.Context, mux *Mux, stdout io.Writer, stderr io.Writer, a
 
 func TestBasicDispatch(t *testing.T) {
 	mux := NewMux("app")
-	cmd := &Command{Run: func(out *Output, call *Call) error {
+	cmd := &Command{Run: RunnerFunc(func(out *Output, call *Call) error {
 		_, err := fmt.Fprintf(out.Stdout, "hello %s", call.Args.Get("name"))
 		return err
-	}}
+	})}
 	cmd.Arg("name", "Name to greet")
 	mux.Handle("greet", "Say hello", cmd)
 	var out bytes.Buffer
@@ -50,12 +50,12 @@ func TestHandleFunc(t *testing.T) {
 func TestCommandFlagsAndOptions(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			repository := call.Options.Get("repository")
 			verbose := call.Flags.Get("verbose")
 			_, err := fmt.Fprintf(out.Stdout, "%s|%t", repository, verbose)
 			return err
-		},
+		}),
 	}
 	cmd.Option("repository", "r", "", "repo path")
 	cmd.Flag("verbose", "v", false, "verbose")
@@ -72,10 +72,10 @@ func TestCommandFlagsAndOptions(t *testing.T) {
 func TestShortFlagsAndOptions(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "%t|%t|%s", call.Flags.Get("verbose"), call.Flags.Get("force"), call.Options.Get("repository"))
 			return err
-		},
+		}),
 	}
 	cmd.Flag("verbose", "v", false, "verbose")
 	cmd.Flag("force", "f", false, "force")
@@ -94,10 +94,10 @@ func TestShortFlagsAndOptions(t *testing.T) {
 func TestCommandRunnerField(t *testing.T) {
 	mux := NewMux("app")
 	mux.Handle("version", "", &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := io.WriteString(out.Stdout, "v1.0.0")
 			return err
-		},
+		}),
 	})
 	var out bytes.Buffer
 	if err := runMux(context.Background(), mux, &out, io.Discard, []string{"version"}); err != nil {
@@ -112,9 +112,9 @@ func TestHandlePointerCommandUsesDescription(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		Description: "Print the current version.",
-		Run: func(*Output, *Call) error {
+		Run: RunnerFunc(func(*Output, *Call) error {
 			return nil
-		},
+		}),
 	}
 	mux.Handle("version", "Show version", cmd)
 
@@ -140,10 +140,10 @@ func TestHandlePointerCommandUsesDescription(t *testing.T) {
 func TestPositionalArgsAreStrings(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "%s|%s", call.Args.Get("repo"), call.Args.Get("path"))
 			return err
-		},
+		}),
 	}
 	cmd.Arg("repo", "Repository name")
 	cmd.Arg("path", "File path")
@@ -161,10 +161,10 @@ func TestCaptureRestPreservesTrailingArgs(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		CaptureRest: true,
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "%v", call.Rest)
 			return err
-		},
+		}),
 	}
 	mux.Handle("match", "", cmd)
 	var out bytes.Buffer
@@ -179,10 +179,10 @@ func TestCaptureRestPreservesTrailingArgs(t *testing.T) {
 func TestDoubleDashCanBePositionalArgument(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "%q", call.Args.Get("value"))
 			return err
-		},
+		}),
 	}
 	cmd.Arg("value", "Value to echo")
 	mux.Handle("echo", "", cmd)
@@ -200,10 +200,10 @@ func TestCaptureRestPreservesLiteralDoubleDash(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		CaptureRest: true,
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "value=%q rest=%q", call.Args.Get("value"), call.Rest)
 			return err
-		},
+		}),
 	}
 	cmd.Arg("value", "Leading value")
 	mux.Handle("echo", "", cmd)
@@ -275,10 +275,10 @@ func TestMountedMuxHelpIncludesProgramGlobals(t *testing.T) {
 
 func TestNestedCommands(t *testing.T) {
 	mux := NewMux("app")
-	cmd := &Command{Run: func(out *Output, call *Call) error {
+	cmd := &Command{Run: RunnerFunc(func(out *Output, call *Call) error {
 		_, err := io.WriteString(out.Stdout, call.Args.Get("name"))
 		return err
-	}}
+	})}
 	cmd.Arg("name", "repo name")
 	mux.Handle("repo init", "", cmd)
 	var out bytes.Buffer
@@ -361,7 +361,7 @@ func TestProgramHelpFunc(t *testing.T) {
 func TestHelpIncludesOptionsAndArgs(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Option("repository", "", "", "repo path")
 	cmd.Arg("path", "Path to open")
@@ -382,10 +382,10 @@ func TestCommandRestHoldsUnparsedTokens(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		CaptureRest: true,
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "repo=%s rest=%v", call.Options.Get("repository"), call.Rest)
 			return err
-		},
+		}),
 	}
 	cmd.Option("repository", "", "", "repo path")
 	mux.Handle("open", "", cmd)
@@ -422,11 +422,11 @@ func TestCustomHelpGetsRootName(t *testing.T) {
 func TestHelpDoesNotShadowOptionValue(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			value := call.Options.Get("template")
 			_, err := io.WriteString(out.Stdout, value)
 			return err
-		},
+		}),
 	}
 	cmd.Option("template", "", "", "template name")
 	mux.Handle("render", "", cmd)
@@ -600,11 +600,11 @@ func TestNegateFlagsCommand(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		NegateFlags: true,
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "verbose=%t force=%t",
 				call.Flags.Get("verbose"), call.Flags.Get("force"))
 			return err
-		},
+		}),
 	}
 	cmd.Flag("verbose", "v", false, "verbose")
 	cmd.Flag("force", "f", false, "force")
@@ -623,10 +623,10 @@ func TestNegateFlagsTrueDefault(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		NegateFlags: true,
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "accept-dns=%t", call.Flags.Get("accept-dns"))
 			return err
-		},
+		}),
 	}
 	cmd.Flag("accept-dns", "", true, "accept DNS")
 	mux.Handle("up", "", cmd)
@@ -644,10 +644,10 @@ func TestNegateFlagsBidirectional(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		NegateFlags: true,
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "no-cache=%t", call.Flags.Get("no-cache"))
 			return err
-		},
+		}),
 	}
 	cmd.Flag("no-cache", "", true, "disable cache")
 	mux.Handle("build", "", cmd)
@@ -665,7 +665,7 @@ func TestNegateFlagsUnknownErrors(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		NegateFlags: true,
-		Run:         func(*Output, *Call) error { return nil },
+		Run:         RunnerFunc(func(*Output, *Call) error { return nil }),
 	}
 	cmd.Flag("verbose", "", false, "verbose")
 	mux.Handle("run", "", cmd)
@@ -679,7 +679,7 @@ func TestNegateFlagsUnknownErrors(t *testing.T) {
 func TestNegateFlagsDisabledByDefault(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(*Output, *Call) error { return nil },
+		Run: RunnerFunc(func(*Output, *Call) error { return nil }),
 	}
 	cmd.Flag("verbose", "", false, "verbose")
 	mux.Handle("run", "", cmd)
@@ -712,7 +712,7 @@ func TestNegateFlagsHelpShowsBothForms(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
 		NegateFlags: true,
-		Run:         func(*Output, *Call) error { return nil },
+		Run:         RunnerFunc(func(*Output, *Call) error { return nil }),
 	}
 	cmd.Flag("accept-dns", "", true, "accept DNS")
 	cmd.Flag("no-cache", "", true, "disable cache")
@@ -734,11 +734,11 @@ func TestNegateFlagsHelpShowsBothForms(t *testing.T) {
 func TestRepeatedOptionAccumulates(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "last=%s all=%v",
 				call.Options.Get("tag"), call.Options.Values("tag"))
 			return err
-		},
+		}),
 	}
 	cmd.Option("tag", "t", "", "tags")
 	mux.Handle("run", "", cmd)
@@ -755,11 +755,11 @@ func TestRepeatedOptionAccumulates(t *testing.T) {
 func TestRepeatedOptionReplacesDefault(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "get=%s values=%v",
 				call.Options.Get("host"), call.Options.Values("host"))
 			return err
-		},
+		}),
 	}
 	cmd.Option("host", "", "localhost", "target host")
 	mux.Handle("run", "", cmd)
@@ -788,11 +788,11 @@ func TestRepeatedOptionReplacesDefault(t *testing.T) {
 func TestApplyDefaultsIdempotent(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "host=%s verbose=%t",
 				call.Options.Get("host"), call.Flags.Get("verbose"))
 			return err
-		},
+		}),
 	}
 	cmd.Option("host", "", "localhost", "target host")
 	cmd.Flag("verbose", "", false, "verbose")
@@ -810,11 +810,11 @@ func TestApplyDefaultsIdempotent(t *testing.T) {
 func TestApplyDefaultsSparseBeforeComplete(t *testing.T) {
 	mux := NewMux("app")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error {
+		Run: RunnerFunc(func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "host=%s verbose=%t",
 				call.Options.Get("host"), call.Flags.Get("verbose"))
 			return err
-		},
+		}),
 	}
 	cmd.Option("host", "", "localhost", "target host")
 	cmd.Flag("verbose", "", false, "verbose")

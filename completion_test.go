@@ -11,7 +11,7 @@ import (
 func newTestMux() *Mux {
 	mux := NewMux("myapp")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Option("repository", "r", "", "repo path")
 	cmd.Flag("force", "f", false, "force init")
@@ -240,7 +240,7 @@ func TestCompleteNegatedFlags(t *testing.T) {
 	mux := NewMux("myapp")
 	cmd := &Command{
 		NegateFlags: true,
-		Run:         func(out *Output, call *Call) error { return nil },
+		Run:         RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Flag("verbose", "v", false, "verbose output")
 	cmd.Flag("no-cache", "", true, "disable cache")
@@ -315,7 +315,7 @@ func TestCompleteMountedMuxScopedFlags(t *testing.T) {
 func TestCompleteArgHint(t *testing.T) {
 	mux := NewMux("myapp")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Arg("image", "Image reference")
 	cmd.Arg("tag", "Image tag")
@@ -341,7 +341,7 @@ func TestCompleteArgHint(t *testing.T) {
 func TestCompleteArgHintSkipsFlags(t *testing.T) {
 	mux := NewMux("myapp")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Flag("verbose", "v", false, "verbose")
 	cmd.Option("output", "o", "", "output path")
@@ -357,7 +357,7 @@ func TestCompleteArgHintSkipsFlags(t *testing.T) {
 func TestCompleteNoArgHintWhenTypingFlag(t *testing.T) {
 	mux := NewMux("myapp")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Flag("verbose", "", false, "verbose")
 	cmd.Arg("name", "Name")
@@ -379,7 +379,7 @@ func TestCompleteNoArgHintWhenTypingFlag(t *testing.T) {
 func TestCompleteEqualsFormSuppression(t *testing.T) {
 	mux := NewMux("myapp")
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Option("output", "", "", "output path")
 	cmd.Flag("force", "", false, "force")
@@ -408,7 +408,7 @@ func TestCompleteGlobalEqualsFormSuppression(t *testing.T) {
 
 func TestCompleteDelegatesToCommandCompleterAtValuePosition(t *testing.T) {
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Option("host", "H", "", "host to connect to")
 	cmd.Completer = CompleterFunc(func(w *TokenWriter, completed []string, partial string) error {
@@ -472,7 +472,7 @@ func TestCompleteDelegatesToCommandCompleterAtValuePosition(t *testing.T) {
 
 func TestCompleteValuePositionNoCompleter(t *testing.T) {
 	cmd := &Command{
-		Run: func(out *Output, call *Call) error { return nil },
+		Run: RunnerFunc(func(out *Output, call *Call) error { return nil }),
 	}
 	cmd.Option("host", "H", "", "host")
 

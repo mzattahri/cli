@@ -89,17 +89,17 @@ func (s *flagSpecs) hasShort(short string) bool {
 	return false
 }
 
-func (s *flagSpecs) helpEntries() []helpFlag {
+func (s *flagSpecs) helpEntries() []HelpFlag {
 	return s.helpEntriesNegatable(false)
 }
 
-func (s *flagSpecs) helpEntriesNegatable(negatable bool) []helpFlag {
+func (s *flagSpecs) helpEntriesNegatable(negatable bool) []HelpFlag {
 	if s == nil {
 		return nil
 	}
-	out := make([]helpFlag, 0, len(s.specs))
+	out := make([]HelpFlag, 0, len(s.specs))
 	for _, spec := range s.specs {
-		out = append(out, helpFlag{
+		out = append(out, HelpFlag{
 			Name:      spec.Name,
 			Short:     spec.Short,
 			Usage:     spec.Usage,
@@ -154,13 +154,13 @@ func (s *optionSpecs) hasShort(short string) bool {
 	return false
 }
 
-func (s *optionSpecs) helpEntries() []helpOption {
+func (s *optionSpecs) helpEntries() []HelpOption {
 	if s == nil {
 		return nil
 	}
-	out := make([]helpOption, 0, len(s.specs))
+	out := make([]HelpOption, 0, len(s.specs))
 	for _, spec := range s.specs {
-		out = append(out, helpOption{
+		out = append(out, HelpOption{
 			Name:    spec.Name,
 			Short:   spec.Short,
 			Usage:   spec.Usage,
@@ -205,13 +205,13 @@ func (s *argSpecs) parse(args []string, captureRest bool) (ArgSet, []string, err
 	return parsed, nil, nil
 }
 
-func (s *argSpecs) helpArguments() []helpArg {
+func (s *argSpecs) HelpArguments() []HelpArg {
 	if s == nil {
 		return nil
 	}
-	out := make([]helpArg, 0, len(s.specs))
+	out := make([]HelpArg, 0, len(s.specs))
 	for _, spec := range s.specs {
-		out = append(out, helpArg{Name: "<" + spec.Name + ">", Usage: spec.Usage})
+		out = append(out, HelpArg{Name: "<" + spec.Name + ">", Usage: spec.Usage})
 	}
 	return out
 }

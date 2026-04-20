@@ -145,7 +145,7 @@ func (p *Program) Walk(runner Runner) iter.Seq2[string, *Help] {
 	}
 }
 
-func walkMux(m *Mux, path, usage, description string, ancestorFlags []helpFlag, ancestorOptions []helpOption, yield func(string, *Help) bool) bool {
+func walkMux(m *Mux, path, usage, description string, ancestorFlags []HelpFlag, ancestorOptions []HelpOption, yield func(string, *Help) bool) bool {
 	muxFlags, muxOptions := m.muxInputs()
 	globalFlags, globalOptions := accumulateHelp(
 		&ancestorHelp{flags: ancestorFlags, options: ancestorOptions},
@@ -169,7 +169,7 @@ func walkMux(m *Mux, path, usage, description string, ancestorFlags []helpFlag, 
 	return walkChildren(&m.root, path, globalFlags, globalOptions, yield)
 }
 
-func walkChildren(n *node, basePath string, globalFlags []helpFlag, globalOptions []helpOption, yield func(string, *Help) bool) bool {
+func walkChildren(n *node, basePath string, globalFlags []HelpFlag, globalOptions []HelpOption, yield func(string, *Help) bool) bool {
 	for _, info := range n.childInfos("") {
 		childPath := joinedPath(basePath, info.name)
 		cn := info.node
@@ -195,7 +195,7 @@ func walkChildren(n *node, basePath string, globalFlags []helpFlag, globalOption
 	return true
 }
 
-func buildNodeHelp(n *node, name, fullPath string, globalFlags []helpFlag, globalOptions []helpOption) *Help {
+func buildNodeHelp(n *node, name, fullPath string, globalFlags []HelpFlag, globalOptions []HelpOption) *Help {
 	help := &Help{
 		Name:        name,
 		FullPath:    fullPath,
@@ -210,7 +210,7 @@ func buildNodeHelp(n *node, name, fullPath string, globalFlags []helpFlag, globa
 		help.Flags = append(help.Flags, fs.helpEntriesNegatable(cmd.NegateFlags)...)
 		help.Options = append(help.Options, os.helpEntries()...)
 		if as != nil {
-			help.Arguments = as.helpArguments()
+			help.Arguments = as.HelpArguments()
 		}
 		help.CaptureRest = cmd.CaptureRest
 	}

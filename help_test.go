@@ -11,18 +11,18 @@ func TestDefaultHelpRender(t *testing.T) {
 		Name:     "app",
 		FullPath: "app",
 		Usage:    "A test application.",
-		Flags: []helpFlag{
+		Flags: []HelpFlag{
 			{Name: "verbose", Short: "v", Usage: "Enable verbose output", Default: false, Global: true},
 			{Name: "force", Short: "f", Usage: "Force operation", Default: false},
 		},
-		Options: []helpOption{
+		Options: []HelpOption{
 			{Name: "repository", Short: "r", Usage: "Repository path", Default: "", Global: true},
 		},
-		Commands: []helpCommand{
+		Commands: []HelpCommand{
 			{Name: "init", Usage: "Initialize"},
 			{Name: "ls", Usage: "List entries"},
 		},
-		Arguments: []helpArg{
+		Arguments: []HelpArg{
 			{Name: "<name>", Usage: "Repository name"},
 		},
 	}
@@ -77,18 +77,18 @@ func TestDefaultHelpAlignsMultilineUsage(t *testing.T) {
 		Name:     "app",
 		FullPath: "app",
 		Usage:    "Show status.",
-		Flags: []helpFlag{
+		Flags: []HelpFlag{
 			{Name: "verbose", Short: "v", Usage: "Enable verbose output\nAlso prints debug events.", Default: false, Global: true},
 			{Name: "force", Short: "f", Usage: "Force operation\nSkips checks.", Default: false},
 		},
-		Options: []helpOption{
+		Options: []HelpOption{
 			{Name: "repository", Short: "r", Usage: "Repository path\nCan be relative.", Default: "", Global: true},
 			{Name: "config", Short: "c", Usage: "Configuration file\nCan be relative.", Default: ""},
 		},
-		Arguments: []helpArg{
+		Arguments: []HelpArg{
 			{Name: "<name>", Usage: "Repository name\nMust already exist."},
 		},
-		Commands: []helpCommand{
+		Commands: []HelpCommand{
 			{Name: "status", Usage: "Show status\nIncludes workspace checks."},
 		},
 	}
@@ -116,7 +116,7 @@ func TestDefaultHelpPreservesArgumentOrder(t *testing.T) {
 		Name:     "app",
 		FullPath: "app copy",
 		Usage:    "Copy files.",
-		Arguments: []helpArg{
+		Arguments: []HelpArg{
 			{Name: "<src>", Usage: "Source path"},
 			{Name: "<dst>", Usage: "Destination path"},
 		},

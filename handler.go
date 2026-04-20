@@ -68,7 +68,7 @@ type Command struct {
 	NegateFlags bool
 
 	// Run handles the command invocation.
-	Run RunnerFunc
+	Run Runner
 
 	// Completer, if non-nil, provides tab completions for this
 	// command. See [Command.Complete] for delegation details.
@@ -105,9 +105,9 @@ func (c *Command) Arg(name, usage string) {
 	c.args.add(name, usage)
 }
 
-// RunCLI calls c.Run.
+// RunCLI delegates to c.Run.
 func (c *Command) RunCLI(out *Output, call *Call) error {
-	return c.Run(out, call)
+	return c.Run.RunCLI(out, call)
 }
 
 func (c *Command) inputs() (*flagSpecs, *optionSpecs, *argSpecs) {

@@ -144,7 +144,7 @@ func TestCommandRejectsReservedHelpNames(t *testing.T) {
 }
 
 func TestCommandNilInput(t *testing.T) {
-	cmd := &Command{Run: func(out *Output, call *Call) error { return nil }}
+	cmd := &Command{Run: RunnerFunc(func(out *Output, call *Call) error { return nil })}
 	if fs, os, as := commandInputs(cmd); fs != nil || os != nil || as != nil {
 		t.Fatal("expected nil inputs")
 	}
@@ -152,7 +152,7 @@ func TestCommandNilInput(t *testing.T) {
 
 func TestCommandInputsAreValidated(t *testing.T) {
 	cmd := &Command{
-		Run: func(*Output, *Call) error { return nil },
+		Run: RunnerFunc(func(*Output, *Call) error { return nil }),
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Arg("name", "user name")
@@ -160,14 +160,14 @@ func TestCommandInputsAreValidated(t *testing.T) {
 	if got := fs.names(); len(got) != 1 || got[0] != "verbose" {
 		t.Fatalf("got %v", got)
 	}
-	if got := as.helpArguments(); len(got) != 1 || got[0].Name != "<name>" {
+	if got := as.HelpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
 }
 
 func TestCommandInputsReturnPointersToFields(t *testing.T) {
 	cmd := &Command{
-		Run: func(*Output, *Call) error { return nil },
+		Run: RunnerFunc(func(*Output, *Call) error { return nil }),
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Arg("name", "user name")
@@ -182,14 +182,14 @@ func TestCommandInputsReturnPointersToFields(t *testing.T) {
 	if got := fs1.names(); len(got) != 1 || got[0] != "verbose" {
 		t.Fatalf("got %v", got)
 	}
-	if got := as1.helpArguments(); len(got) != 1 || got[0].Name != "<name>" {
+	if got := as1.HelpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
 }
 
 func TestCommandWithAllInputTypes(t *testing.T) {
 	cmd := &Command{
-		Run: func(*Output, *Call) error { return nil },
+		Run:         RunnerFunc(func(*Output, *Call) error { return nil }),
 		CaptureRest: true,
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
@@ -203,7 +203,7 @@ func TestCommandWithAllInputTypes(t *testing.T) {
 	if got := os.names(); len(got) != 1 || got[0] != "host" {
 		t.Fatalf("got %v", got)
 	}
-	if got := as.helpArguments(); len(got) != 1 || got[0].Name != "<name>" {
+	if got := as.HelpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
 	if !commandCaptureRest(cmd) {

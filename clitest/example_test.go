@@ -13,10 +13,10 @@ import (
 func ExampleNewCall() {
 	cmd := &cli.Command{
 		CaptureRest: true,
-		Run: func(out *cli.Output, call *cli.Call) error {
+		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
 			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Rest, ","))
 			return err
-		},
+		}),
 	}
 	mux := cli.NewMux("app")
 	mux.Handle("echo", "Echo arguments", cmd)
@@ -52,12 +52,12 @@ func ExampleNewCall_context() {
 	mux.Option("host", "H", "", "host")
 
 	cmd := &cli.Command{
-		Run: func(out *cli.Output, call *cli.Call) error {
+		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
 			user := call.Context().Value(authKey{})
 			_, err := fmt.Fprintf(out.Stdout, "user=%v host=%s verbose=%t name=%s",
 				user, call.Options.Get("host"), call.Flags.Get("verbose"), call.Args.Get("name"))
 			return err
-		},
+		}),
 	}
 	cmd.Arg("name", "user name")
 	mux.Handle("whoami", "", cmd)

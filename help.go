@@ -28,46 +28,27 @@ type Help struct {
 
 	// Flags lists boolean flags. Entries with Global set were declared
 	// on a parent [Mux]; the rest were declared on the [Command].
-	Flags []struct {
-		Name      string
-		Short     string
-		Usage     string
-		Default   bool
-		Negatable bool
-		Global    bool
-	}
+	Flags []HelpFlag
 
 	// Options lists value options. Entries with Global set were declared
 	// on a parent [Mux]; the rest were declared on the [Command].
-	Options []struct {
-		Name    string
-		Short   string
-		Usage   string
-		Default string
-		Global  bool
-	}
+	Options []HelpOption
 
 	// Commands lists immediate child commands. When Commands is
 	// non-empty the node is a routing point and Arguments is empty.
-	Commands []struct {
-		Name        string
-		Usage       string
-		Description string
-	}
+	Commands []HelpCommand
 
 	// Arguments lists positional arguments accepted by this command.
 	// When a node has Commands, Arguments is empty.
-	Arguments []struct {
-		Name  string
-		Usage string
-	}
+	Arguments []HelpArg
 
 	// CaptureRest indicates that the command accepts trailing
 	// arguments beyond those listed in Arguments.
 	CaptureRest bool
 }
 
-type helpFlag = struct {
+// A HelpFlag describes a boolean flag in help output.
+type HelpFlag struct {
 	Name      string
 	Short     string
 	Usage     string
@@ -75,21 +56,27 @@ type helpFlag = struct {
 	Negatable bool
 	Global    bool
 }
-type helpOption = struct {
+
+// A HelpOption describes a value option in help output.
+type HelpOption struct {
 	Name    string
 	Short   string
 	Usage   string
 	Default string
 	Global  bool
 }
-type helpArg = struct {
-	Name  string
-	Usage string
-}
-type helpCommand = struct {
+
+// A HelpCommand describes a subcommand in help output.
+type HelpCommand struct {
 	Name        string
 	Usage       string
 	Description string
+}
+
+// A HelpArg describes a positional argument in help output.
+type HelpArg struct {
+	Name  string
+	Usage string
 }
 
 // DefaultHelpFunc is the built-in [HelpFunc] used when no override is set.
@@ -99,7 +86,7 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		panic("cli: nil help")
 	}
 	commands := slices.Clone(help.Commands)
-	slices.SortFunc(commands, func(a, b helpCommand) int {
+	slices.SortFunc(commands, func(a, b HelpCommand) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
 	if help.Usage != "" {
@@ -187,8 +174,8 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 	return nil
 }
 
-func filterFlags(flags []helpFlag, global bool) []helpFlag {
-	var out []helpFlag
+func filterFlags(flags []HelpFlag, global bool) []HelpFlag {
+	var out []HelpFlag
 	for _, f := range flags {
 		if f.Global == global {
 			out = append(out, f)
@@ -197,8 +184,8 @@ func filterFlags(flags []helpFlag, global bool) []helpFlag {
 	return out
 }
 
-func filterOptions(options []helpOption, global bool) []helpOption {
-	var out []helpOption
+func filterOptions(options []HelpOption, global bool) []HelpOption {
+	var out []HelpOption
 	for _, o := range options {
 		if o.Global == global {
 			out = append(out, o)
@@ -207,7 +194,7 @@ func filterOptions(options []helpOption, global bool) []helpOption {
 	return out
 }
 
-func renderFlagSection(w io.Writer, title string, entries []helpFlag) error {
+func renderFlagSection(w io.Writer, title string, entries []HelpFlag) error {
 	if len(entries) == 0 {
 		return nil
 	}
@@ -225,7 +212,7 @@ func renderFlagSection(w io.Writer, title string, entries []helpFlag) error {
 	return renderHelpTable(w, rows)
 }
 
-func renderOptionSection(w io.Writer, title string, entries []helpOption) error {
+func renderOptionSection(w io.Writer, title string, entries []HelpOption) error {
 	if len(entries) == 0 {
 		return nil
 	}
