@@ -37,10 +37,10 @@ func main() {
 	defer stop()
 
 	cmd := &cli.Command{
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "hello %s\n", call.Args.Get("name"))
 			return err
-		}),
+		},
 	}
 	cmd.Arg("name", "Name to greet")
 

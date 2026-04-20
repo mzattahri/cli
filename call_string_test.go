@@ -22,10 +22,10 @@ func TestCallStringCanonicalizesParsedCall(t *testing.T) {
 
 	cmd := &Command{
 		CaptureRest: true,
-		Run: RunnerFunc(func(out *Output, call *Call) error {
+		Run: func(out *Output, call *Call) error {
 			_, err := out.Stdout.Write([]byte(call.String()))
 			return err
-		}),
+		},
 	}
 	cmd.Flag("force", "f", false, "force")
 	cmd.Flag("cache", "", true, "cache")
@@ -63,10 +63,10 @@ func TestCallStringNormalizesEquivalentInvocations(t *testing.T) {
 	mux.Flag("verbose", "v", false, "verbose")
 
 	cmd := &Command{
-		Run: RunnerFunc(func(out *Output, call *Call) error {
+		Run: func(out *Output, call *Call) error {
 			_, err := out.Stdout.Write([]byte(call.String()))
 			return err
-		}),
+		},
 	}
 	cmd.Flag("force", "f", false, "force")
 	cmd.Option("tag", "t", "", "tag")

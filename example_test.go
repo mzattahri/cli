@@ -34,11 +34,11 @@ func ExampleMux_Handle_subtree() {
 func ExampleCommand() {
 	cmd := &cli.Command{
 		CaptureRest: true,
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			detach := call.Flags.Get("detach")
 			_, err := fmt.Fprintf(out.Stdout, "image=%s detach=%t command=%v", call.Args.Get("image"), detach, call.Rest)
 			return err
-		}),
+		},
 	}
 	cmd.Flag("detach", "", false, "Run in background")
 	cmd.Arg("image", "Image reference")
@@ -57,11 +57,11 @@ func ExampleCommand() {
 func ExampleCommand_negateFlags() {
 	cmd := &cli.Command{
 		NegateFlags: true,
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "dns=%t cache=%t",
 				call.Flags.Get("accept-dns"), call.Flags.Get("no-cache"))
 			return err
-		}),
+		},
 	}
 	cmd.Flag("accept-dns", "", true, "Accept DNS")
 	cmd.Flag("no-cache", "", true, "Disable cache")
@@ -78,10 +78,10 @@ func ExampleCommand_negateFlags() {
 
 func ExampleProgram_Invoke() {
 	cmd := &cli.Command{
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "hello %s", call.Args.Get("name"))
 			return err
-		}),
+		},
 	}
 	cmd.Arg("name", "Person to greet")
 
@@ -198,11 +198,11 @@ func ExampleCall_WithContext() {
 
 func ExampleMux_Handle_optionsOnly() {
 	cmd := &cli.Command{
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			host := call.Options.Get("host")
 			_, err := fmt.Fprint(out.Stdout, host)
 			return err
-		}),
+		},
 	}
 	cmd.Option("host", "", "", "daemon socket")
 
@@ -288,10 +288,10 @@ func ExampleCommand_Completer() {
 	hosts := []string{"prod.example.com", "staging.example.com", "dev.example.com"}
 
 	cmd := &cli.Command{
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "host=%s", call.Options.Get("host"))
 			return err
-		}),
+		},
 		// Completer provides tab completions for option values.
 		// At value position (e.g. "--host <TAB>"), Command.Complete
 		// delegates here with completed ending in the option token.
@@ -361,7 +361,7 @@ func ExampleEnvMiddleware() {
 
 func ExampleCall_WithContext_timeout() {
 	cmd := &cli.Command{
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			ctx := call.Context()
 			// Simulate work that respects the context deadline.
 			select {
@@ -372,7 +372,7 @@ func ExampleCall_WithContext_timeout() {
 				_, err := fmt.Fprint(out.Stdout, "done")
 				return err
 			}
-		}),
+		},
 	}
 
 	mux := cli.NewMux("app")
@@ -405,10 +405,10 @@ func ExampleCall_WithContext_timeout() {
 
 func ExampleRecorder() {
 	cmd := &cli.Command{
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "hello %s", call.Args.Get("name"))
 			return err
-		}),
+		},
 	}
 	cmd.Arg("name", "Person to greet")
 

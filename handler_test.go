@@ -144,7 +144,7 @@ func TestCommandRejectsReservedHelpNames(t *testing.T) {
 }
 
 func TestCommandNilInput(t *testing.T) {
-	cmd := &Command{Run: RunnerFunc(func(out *Output, call *Call) error { return nil })}
+	cmd := &Command{Run: func(out *Output, call *Call) error { return nil }}
 	if fs, os, as := commandInputs(cmd); fs != nil || os != nil || as != nil {
 		t.Fatal("expected nil inputs")
 	}
@@ -152,7 +152,7 @@ func TestCommandNilInput(t *testing.T) {
 
 func TestCommandInputsAreValidated(t *testing.T) {
 	cmd := &Command{
-		Run: RunnerFunc(func(*Output, *Call) error { return nil }),
+		Run: func(*Output, *Call) error { return nil },
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Arg("name", "user name")
@@ -167,7 +167,7 @@ func TestCommandInputsAreValidated(t *testing.T) {
 
 func TestCommandInputsReturnPointersToFields(t *testing.T) {
 	cmd := &Command{
-		Run: RunnerFunc(func(*Output, *Call) error { return nil }),
+		Run: func(*Output, *Call) error { return nil },
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Arg("name", "user name")
@@ -189,7 +189,7 @@ func TestCommandInputsReturnPointersToFields(t *testing.T) {
 
 func TestCommandWithAllInputTypes(t *testing.T) {
 	cmd := &Command{
-		Run:         RunnerFunc(func(*Output, *Call) error { return nil }),
+		Run:         func(*Output, *Call) error { return nil },
 		CaptureRest: true,
 	}
 	cmd.Flag("verbose", "", false, "verbose output")

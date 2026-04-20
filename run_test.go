@@ -34,11 +34,11 @@ func TestInvokeDefaultsNilTTYAndStdin(t *testing.T) {
 
 func TestInvokeSkipsArgv0(t *testing.T) {
 	mux := NewMux("app")
-	cmd := &Command{Run: RunnerFunc(func(out *Output, call *Call) error {
+	cmd := &Command{Run: func(out *Output, call *Call) error {
 		value, _ := call.Env("TERMINAL_TEST_VALUE")
 		_, err := out.Stdout.Write([]byte(call.Args.Get("msg") + ":" + value))
 		return err
-	})}
+	}}
 	cmd.Arg("msg", "message")
 	mux.Handle("echo", "", cmd)
 
@@ -180,7 +180,7 @@ func TestWalkMux(t *testing.T) {
 
 	deployCmd := &Command{
 		Description: "Deploy the app",
-		Run:         RunnerFunc(func(*Output, *Call) error { return nil }),
+		Run:         func(*Output, *Call) error { return nil },
 	}
 	deployCmd.Flag("force", "f", false, "force")
 	deployCmd.Arg("target", "deploy target")

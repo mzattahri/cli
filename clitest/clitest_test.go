@@ -16,10 +16,10 @@ func TestCallCapturesStdout(t *testing.T) {
 	mux := cli.NewMux("app")
 	cmd := &cli.Command{
 		CaptureRest: true,
-		Run: cli.RunnerFunc(func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *cli.Output, call *cli.Call) error {
 			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Rest, ","))
 			return err
-		}),
+		},
 	}
 	mux.Handle("echo", "", cmd)
 

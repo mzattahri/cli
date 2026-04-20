@@ -56,7 +56,7 @@ func CompletionRunner(c Completer) Runner {
 	}
 	return &Command{
 		CaptureRest: true,
-		Run: RunnerFunc(func(out *Output, call *Call) error {
+		Run: func(out *Output, call *Call) error {
 			args := call.Rest
 			var completed []string
 			partial := ""
@@ -66,7 +66,7 @@ func CompletionRunner(c Completer) Runner {
 			}
 			tw := &TokenWriter{Writer: out.Stdout}
 			return c.Complete(tw, completed, partial)
-		}),
+		},
 	}
 }
 

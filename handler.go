@@ -67,8 +67,9 @@ type Command struct {
 	// also sets it to false.
 	NegateFlags bool
 
-	// Run handles the command invocation.
-	Run Runner
+	// Run handles the command invocation. To plug in an existing
+	// [Runner], use its RunCLI method value: Run: someRunner.RunCLI.
+	Run RunnerFunc
 
 	// Completer, if non-nil, provides tab completions for this
 	// command. See [Command.Complete] for delegation details.
@@ -105,9 +106,9 @@ func (c *Command) Arg(name, usage string) {
 	c.args.add(name, usage)
 }
 
-// RunCLI delegates to c.Run.
+// RunCLI calls c.Run.
 func (c *Command) RunCLI(out *Output, call *Call) error {
-	return c.Run.RunCLI(out, call)
+	return c.Run(out, call)
 }
 
 func (c *Command) inputs() (*flagSpecs, *optionSpecs, *argSpecs) {
