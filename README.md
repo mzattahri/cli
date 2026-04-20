@@ -20,6 +20,10 @@ adds typed input declarations — flags, options, and positional arguments — t
 `Runner`. A `Program` ties a root runner to the process environment and handles
 I/O and exit-code normalization.
 
+The example below scaffolds a CLI shaped like `tailscale` — a root mux with a
+global flag, flat subcommands (`up`, `down`, `status`), a nested `debug` mux,
+and an `ssh` passthrough.
+
 ```go
 package main
 
@@ -93,10 +97,7 @@ func main() {
 	ssh.Arg("host", "Target machine")
 	mux.Handle("ssh", "SSH to a tailnet host", ssh)
 
-	if err := (&cli.Program{}).Invoke(ctx, mux, os.Args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(err.Code)
-	}
+	cli.Exit((&cli.Program{}).Invoke(ctx, mux, os.Args))
 }
 ```
 
