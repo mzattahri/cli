@@ -248,7 +248,7 @@ func splitOptionValuePartial(partial string, flags *flagSpecs, options *optionSp
 	if !strings.HasPrefix(partial, "--") {
 		return "", "", false
 	}
-	n, v, hasEquals := splitFlagToken(partial[2:])
+	n, v, hasEquals := strings.Cut(partial[2:], "=")
 	if !hasEquals {
 		return "", "", false
 	}

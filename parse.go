@@ -125,7 +125,7 @@ func parseInputCursor(flags *flagSpecs, options *optionSpecs, cur *tokenCursor, 
 		}
 
 		cur.next()
-		name, rawValue, hasValue := splitFlagToken(arg[2:])
+		name, rawValue, hasValue := strings.Cut(arg[2:], "=")
 
 		if spec, ok := flagByName[name]; ok {
 			value := true
@@ -174,28 +174,16 @@ func parseInputCursor(flags *flagSpecs, options *optionSpecs, cur *tokenCursor, 
 //   - --no-verbose negates a flag named "verbose"
 //   - --cache negates a flag named "no-cache"
 func negateFlagName(name string, flagByName map[string]flagSpec) (string, bool) {
-	if strings.HasPrefix(name, "no-") {
-		target := name[3:]
+	if target, ok := strings.CutPrefix(name, "no-"); ok {
 		if spec, ok := flagByName[target]; ok {
 			return spec.Name, true
 		}
 	} else {
-		target := "no-" + name
-		if spec, ok := flagByName[target]; ok {
+		if spec, ok := flagByName["no-"+name]; ok {
 			return spec.Name, true
 		}
 	}
 	return "", false
-}
-
-func splitFlagToken(token string) (name, value string, hasValue bool) {
-	name = token
-	if i := strings.IndexByte(token, '='); i >= 0 {
-		name = token[:i]
-		value = token[i+1:]
-		hasValue = true
-	}
-	return name, value, hasValue
 }
 
 func validateShortName(short string) string {

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -181,11 +182,7 @@ func canonicalOptionTokens(prefix string, opts OptionSet) []string {
 		return nil
 	}
 	// Collect sorted keys, then iterate values in insertion order per key.
-	var keys []string
-	for name := range opts.All() {
-		keys = append(keys, name)
-	}
-	slices.Sort(keys)
+	keys := slices.Sorted(maps.Keys(opts.m))
 	var tokens []string
 	for _, name := range keys {
 		for _, value := range opts.Values(name) {
@@ -201,12 +198,7 @@ func canonicalArgTokens(args ArgSet, argNames []string) []string {
 	}
 	names := argNames
 	if len(names) == 0 {
-		var sorted []string
-		for name := range args.All() {
-			sorted = append(sorted, name)
-		}
-		slices.Sort(sorted)
-		names = sorted
+		names = slices.Sorted(maps.Keys(args.m))
 	}
 	tokens := make([]string, 0, len(names))
 	for _, name := range names {

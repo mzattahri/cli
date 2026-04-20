@@ -278,11 +278,11 @@ func (m *Mux) runWithPath(out *Output, call *Call, fullPath string, usage string
 // accumulateHelp merges ancestor help entries with the current mux's
 // flag and option entries, marking all as global.
 func accumulateHelp(ancestors *ancestorHelp, fs *flagSpecs, os *optionSpecs, negateFlags bool) ([]HelpFlag, []HelpOption) {
-	flags := append(append([]HelpFlag(nil), ancestors.flags...), fs.helpEntriesNegatable(negateFlags)...)
+	flags := slices.Concat(ancestors.flags, fs.helpEntriesNegatable(negateFlags))
 	for i := range flags {
 		flags[i].Global = true
 	}
-	options := append(append([]HelpOption(nil), ancestors.options...), os.helpEntries()...)
+	options := slices.Concat(ancestors.options, os.helpEntries())
 	for i := range options {
 		options[i].Global = true
 	}

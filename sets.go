@@ -311,9 +311,7 @@ func (s *FlagSet) merge(other FlagSet) {
 	if s.m == nil {
 		s.m = make(map[string]flagEntry, len(other.m))
 	}
-	for k, v := range other.m {
-		s.m[k] = v
-	}
+	maps.Copy(s.m, other.m)
 }
 
 // Clone returns a deep copy of s.

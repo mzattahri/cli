@@ -239,9 +239,6 @@ func renderHelpTable(w io.Writer, rows []helpRow) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, row := range rows {
 		lines := strings.Split(row.Usage, "\n")
-		if len(lines) == 0 {
-			lines = []string{""}
-		}
 		if _, err := fmt.Fprintf(tw, "  %s\t%s\n", row.Name, lines[0]); err != nil {
 			return err
 		}
@@ -265,8 +262,8 @@ func formatInputName(name, short string, negatable bool) string {
 	b.WriteString(name)
 	if negatable {
 		b.WriteString(", --")
-		if strings.HasPrefix(name, "no-") {
-			b.WriteString(name[3:])
+		if s, ok := strings.CutPrefix(name, "no-"); ok {
+			b.WriteString(s)
 		} else {
 			b.WriteString("no-")
 			b.WriteString(name)
