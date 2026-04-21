@@ -1,4 +1,4 @@
-// Package cli parses command lines and dispatches to runners.
+// Package argv parses command lines and dispatches to runners.
 //
 // A [Mux] matches command names to [Runner] values. A [Command] parses
 // flags, options, and positional arguments before invoking its runner.
@@ -47,11 +47,11 @@
 //
 // # Testing
 //
-// The clitest sub-package provides in-memory helpers for testing
+// The argvtest sub-package provides in-memory helpers for testing
 // runners without a process, os.Args, or signal handling:
 //
-//	recorder := clitest.NewRecorder()
-//	call := clitest.NewCall("greet gopher", nil)
+//	recorder := argvtest.NewRecorder()
+//	call := argvtest.NewCall("greet gopher", nil)
 //	err := mux.RunCLI(recorder.Output(), call)
 //	// recorder.Stdout.String() == "hello gopher\n"
-package cli
+package argv

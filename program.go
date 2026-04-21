@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"context"
@@ -58,13 +58,13 @@ func (p *Program) output() *Output {
 // returns nil after rendering help. Invoke panics if ctx is nil.
 func (p *Program) Invoke(ctx context.Context, runner Runner, args []string) *ExitError {
 	if ctx == nil {
-		panic("cli: nil context")
+		panic("argv: nil context")
 	}
 	if p == nil {
-		panic("cli: nil program")
+		panic("argv: nil program")
 	}
 	if runner == nil {
-		panic("cli: nil runner")
+		panic("argv: nil runner")
 	}
 	stdin := p.Stdin
 	if stdin == nil {

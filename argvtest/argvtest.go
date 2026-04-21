@@ -1,17 +1,17 @@
-package clitest
+package argvtest
 
 import (
 	"bytes"
 	"context"
 	"strings"
 
-	"github.com/mzattahri/cli"
+	"github.com/mzattahri/argv"
 )
 
-// NewCall returns a [*cli.Call] from a space-separated argument string and
+// NewCall returns a [*argv.Call] from a space-separated argument string and
 // optional raw stdin bytes. The call uses [context.Background].
-func NewCall(arg string, stdin []byte) *cli.Call {
-	call := cli.NewCall(context.Background(), strings.Fields(arg))
+func NewCall(arg string, stdin []byte) *argv.Call {
+	call := argv.NewCall(context.Background(), strings.Fields(arg))
 	if stdin != nil {
 		call.Stdin = bytes.NewReader(stdin)
 	}
@@ -30,9 +30,9 @@ func NewRecorder() *Recorder {
 	return &Recorder{}
 }
 
-// Output returns a [*cli.Output] backed by the recorder's buffers.
-func (r *Recorder) Output() *cli.Output {
-	return &cli.Output{Stdout: &r.Stdout, Stderr: &r.Stderr}
+// Output returns a [*argv.Output] backed by the recorder's buffers.
+func (r *Recorder) Output() *argv.Output {
+	return &argv.Output{Stdout: &r.Stdout, Stderr: &r.Stderr}
 }
 
 // Len returns the total number of bytes written to both buffers.

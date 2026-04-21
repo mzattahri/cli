@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"errors"
@@ -113,10 +113,10 @@ func (n *node) description() string { return n.descriptionText }
 
 func validateRunner(runner Runner) {
 	if runner == nil {
-		panic("cli: nil command runner")
+		panic("argv: nil command runner")
 	}
 	if cmd, ok := runner.(*Command); ok && cmd.Run == nil {
-		panic("cli: nil command handler")
+		panic("argv: nil command handler")
 	}
 }
 
@@ -135,7 +135,7 @@ func (n *node) hasRunner() bool       { return n.runner != nil }
 // It panics if name is empty.
 func NewMux(name string) *Mux {
 	if name == "" {
-		panic("cli: empty mux name")
+		panic("argv: empty mux name")
 	}
 	return &Mux{Name: name}
 }
@@ -197,7 +197,7 @@ func (m *Mux) Handle(pattern string, usage string, runner Runner) {
 		n = n.getOrCreate(seg)
 	}
 	if n.hasRunner() {
-		panic("cli: command conflict at " + `"` + pattern + `"`)
+		panic("argv: command conflict at " + `"` + pattern + `"`)
 	}
 	n.setCommand(cmd, runner, usage, description)
 }
@@ -210,14 +210,14 @@ func (m *Mux) HandleFunc(pattern string, usage string, fn func(*Output, *Call) e
 
 func (m *Mux) mount(prefix string, usage string, sub *Mux) {
 	if sub == nil {
-		panic("cli: nil mount mux")
+		panic("argv: nil mount mux")
 	}
 	n := &m.root
 	for _, seg := range strings.Fields(prefix) {
 		n = n.getOrCreate(seg)
 	}
 	if n.hasRunner() {
-		panic("cli: mount conflict at " + `"` + prefix + `"`)
+		panic("argv: mount conflict at " + `"` + prefix + `"`)
 	}
 	n.setCommand(nil, sub, usage, "")
 }
@@ -226,7 +226,7 @@ func (m *Mux) mount(prefix string, usage string, sub *Mux) {
 // dispatches to the matched handler. It panics if call is nil.
 func (m *Mux) RunCLI(out *Output, call *Call) error {
 	if call == nil {
-		panic("cli: nil call")
+		panic("argv: nil call")
 	}
 	return m.runWithPath(out, call, m.Name, "", "", nil, DefaultHelpFunc)
 }

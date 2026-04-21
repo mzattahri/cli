@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ import (
 // An empty value is treated as "not set." An unparseable value returns
 // an error. For options, the environment value is set directly.
 //
-//	mw := cli.EnvMiddleware(
+//	mw := argv.EnvMiddleware(
 //		map[string]string{"verbose": "VERBOSE"},
 //		map[string]string{"host": "API_HOST"},
 //		os.LookupEnv,
@@ -37,7 +37,7 @@ func EnvMiddleware(flags, options map[string]string, lookupEnv LookupFunc) Middl
 				}
 				b, err := parseEnvBool(val)
 				if err != nil {
-					return fmt.Errorf("cli: env var %s: %w", envVar, err)
+					return fmt.Errorf("argv: env var %s: %w", envVar, err)
 				}
 				call.Flags.Set(name, b)
 			}

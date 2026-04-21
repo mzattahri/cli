@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"cmp"
@@ -83,7 +83,7 @@ type HelpArg struct {
 // It renders a tabular summary to w.
 func DefaultHelpFunc(w io.Writer, help *Help) error {
 	if help == nil {
-		panic("cli: nil help")
+		panic("argv: nil help")
 	}
 	commands := slices.Clone(help.Commands)
 	slices.SortFunc(commands, func(a, b HelpCommand) int {

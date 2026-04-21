@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 
 // ErrHelp is returned when help output was displayed instead of
 // running a command. It is distinct from [ExitError].
-var ErrHelp = errors.New("cli: help requested")
+var ErrHelp = errors.New("argv: help requested")
 
 // Standard process exit codes used by [Program.Invoke]. ExitUsage
 // covers both help output and usage errors (unknown flag, missing

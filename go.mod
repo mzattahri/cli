@@ -1,3 +1,3 @@
-module github.com/mzattahri/cli
+module github.com/mzattahri/argv
 
 go 1.23

@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var errFlagHelp = errors.New("cli: help flag")
+var errFlagHelp = errors.New("argv: help flag")
 
 type parsedInput struct {
 	flags   FlagSet
@@ -188,13 +188,13 @@ func negateFlagName(name string, flagByName map[string]flagSpec) (string, bool) 
 
 func validateShortName(short string) string {
 	if len(short) != 1 {
-		panic("cli: short name must be one character")
+		panic("argv: short name must be one character")
 	}
 	if short == "-" || short == "=" {
-		panic("cli: invalid short name " + `"` + short + `"`)
+		panic("argv: invalid short name " + `"` + short + `"`)
 	}
 	if short == "h" {
-		panic("cli: short name " + `"h"` + " is reserved for help")
+		panic("argv: short name " + `"h"` + " is reserved for help")
 	}
 	return short
 }

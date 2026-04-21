@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"fmt"
@@ -52,7 +52,7 @@ func (f CompleterFunc) Complete(w *TokenWriter, completed []string, partial stri
 // It panics if c is nil.
 func CompletionRunner(c Completer) Runner {
 	if c == nil {
-		panic("cli: nil completer")
+		panic("argv: nil completer")
 	}
 	return &Command{
 		CaptureRest: true,

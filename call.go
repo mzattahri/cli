@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"context"
@@ -93,7 +93,7 @@ func NewLookupFunc(env map[string]string) LookupFunc {
 // It panics if ctx is nil.
 func NewCall(ctx context.Context, argv []string) *Call {
 	if ctx == nil {
-		panic("cli: nil context")
+		panic("argv: nil context")
 	}
 	return &Call{
 		ctx:     setState(ctx, &callState{argv: slices.Clone(argv)}),
@@ -109,7 +109,7 @@ func NewCall(ctx context.Context, argv []string) *Call {
 // It panics if ctx is nil.
 func (c *Call) WithContext(ctx context.Context) *Call {
 	if ctx == nil {
-		panic("cli: nil context")
+		panic("argv: nil context")
 	}
 	if s := getState(c.ctx); s != nil {
 		ctx = setState(ctx, s)

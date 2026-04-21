@@ -1,4 +1,4 @@
-package cli
+package argv
 
 import (
 	"fmt"
@@ -12,10 +12,10 @@ import (
 // input kind (e.g. a flag name matching an existing option name).
 func checkCrossCollision(name, short string, hasName func(string) bool, hasShort func(string) bool) {
 	if hasName(name) {
-		panic("cli: duplicate input " + `"` + name + `"`)
+		panic("argv: duplicate input " + `"` + name + `"`)
 	}
 	if short != "" && hasShort(short) {
-		panic("cli: duplicate short input " + `"` + short + `"`)
+		panic("argv: duplicate short input " + `"` + short + `"`)
 	}
 }
 
@@ -25,22 +25,22 @@ func checkCrossCollision(name, short string, hasName func(string) bool, hasShort
 // validated short name.
 func validateInputSpec(kind, name, short string, hasName func(string) bool, hasShort func(string) bool) string {
 	if name == "" {
-		panic("cli: empty " + kind + " name")
+		panic("argv: empty " + kind + " name")
 	}
 	if strings.ContainsAny(name, "= \t") || strings.HasPrefix(name, "-") {
-		panic("cli: invalid " + kind + " name " + `"` + name + `"`)
+		panic("argv: invalid " + kind + " name " + `"` + name + `"`)
 	}
 	if name == "help" {
-		panic(`cli: reserved ` + kind + ` name "help"`)
+		panic(`argv: reserved ` + kind + ` name "help"`)
 	}
 	if short != "" {
 		short = validateShortName(short)
 	}
 	if hasName(name) {
-		panic("cli: duplicate " + kind + " " + `"` + name + `"`)
+		panic("argv: duplicate " + kind + " " + `"` + name + `"`)
 	}
 	if short != "" && hasShort(short) {
-		panic("cli: duplicate short " + kind + " " + `"` + short + `"`)
+		panic("argv: duplicate short " + kind + " " + `"` + short + `"`)
 	}
 	return short
 }
@@ -176,11 +176,11 @@ type argSpecs struct {
 
 func (s *argSpecs) add(name, usage string) {
 	if name == "" {
-		panic("cli: empty argument name")
+		panic("argv: empty argument name")
 	}
 	for _, existing := range s.specs {
 		if existing.Name == name {
-			panic("cli: duplicate argument " + `"` + name + `"`)
+			panic("argv: duplicate argument " + `"` + name + `"`)
 		}
 	}
 	s.specs = append(s.specs, argSpec{Name: name, Usage: usage})

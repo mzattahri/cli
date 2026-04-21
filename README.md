@@ -1,11 +1,11 @@
-# cli
+# argv
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/mzattahri/cli.svg)](https://pkg.go.dev/github.com/mzattahri/cli)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mzattahri/argv.svg)](https://pkg.go.dev/github.com/mzattahri/argv)
 
-`cli` routes command-line arguments to handlers, the same way `net/http` routes
+`argv` routes command-line arguments to handlers, the same way `net/http` routes
 HTTP requests.
 
-| net/http            | cli              |
+| net/http            | argv             |
 | ------------------- | ---------------- |
 | `Handler`           | `Runner`         |
 | `Request`           | `Call`           |
@@ -33,7 +33,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/mzattahri/cli"
+	"github.com/mzattahri/argv"
 )
 
 func main() {
@@ -41,13 +41,13 @@ func main() {
 	defer stop()
 
 	// Root mux with a global flag available to every subcommand.
-	mux := cli.NewMux("tailscale")
+	mux := argv.NewMux("tailscale")
 	mux.Flag("verbose", "v", false, "Verbose output")
 
 	// `tailscale up` — negatable flags and an option with a default.
-	up := &cli.Command{
+	up := &argv.Command{
 		NegateFlags: true,
-		Run: func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *argv.Output, call *argv.Call) error {
 			_, err := fmt.Fprintf(out, "up hostname=%s dns=%t routes=%t\n",
 				call.Options.Get("hostname"),
 				call.Flags.Get("accept-dns"),
@@ -60,23 +60,23 @@ func main() {
 	up.Option("hostname", "", "", "Tailnet hostname")
 	mux.Handle("up", "Connect to Tailscale", up)
 
-	mux.HandleFunc("down", "Disconnect", func(out *cli.Output, call *cli.Call) error {
+	mux.HandleFunc("down", "Disconnect", func(out *argv.Output, call *argv.Call) error {
 		_, err := fmt.Fprintln(out, "disconnected")
 		return err
 	})
-	mux.HandleFunc("status", "Show status", func(out *cli.Output, call *cli.Call) error {
+	mux.HandleFunc("status", "Show status", func(out *argv.Output, call *argv.Call) error {
 		_, err := fmt.Fprintln(out, "connected")
 		return err
 	})
 
 	// `tailscale debug ...` — a nested mux mounted as a subcommand.
-	debug := cli.NewMux("debug")
-	debug.HandleFunc("prefs", "Print current preferences", func(out *cli.Output, call *cli.Call) error {
+	debug := argv.NewMux("debug")
+	debug.HandleFunc("prefs", "Print current preferences", func(out *argv.Output, call *argv.Call) error {
 		_, err := fmt.Fprintln(out, "{...prefs...}")
 		return err
 	})
-	logs := &cli.Command{
-		Run: func(out *cli.Output, call *cli.Call) error {
+	logs := &argv.Command{
+		Run: func(out *argv.Output, call *argv.Call) error {
 			_, err := fmt.Fprintf(out, "logs for %s\n", call.Args.Get("component"))
 			return err
 		},
@@ -86,9 +86,9 @@ func main() {
 	mux.Handle("debug", "Debugging helpers", debug)
 
 	// `tailscale ssh <host> -- cmd...` — passthrough via CaptureRest.
-	ssh := &cli.Command{
+	ssh := &argv.Command{
 		CaptureRest: true,
-		Run: func(out *cli.Output, call *cli.Call) error {
+		Run: func(out *argv.Output, call *argv.Call) error {
 			_, err := fmt.Fprintf(out, "ssh %s -- %v\n",
 				call.Args.Get("host"), call.Rest)
 			return err
@@ -97,7 +97,7 @@ func main() {
 	ssh.Arg("host", "Target machine")
 	mux.Handle("ssh", "SSH to a tailnet host", ssh)
 
-	cli.Exit((&cli.Program{}).Invoke(ctx, mux, os.Args))
+	argv.Exit((&argv.Program{}).Invoke(ctx, mux, os.Args))
 }
 ```
 
@@ -134,7 +134,7 @@ Options:
   vars when not provided on the command line
 - **Shell completion** — `CompletionRunner` emits tab completions for bash, zsh,
   and fish
-- **Testing** — `clitest` sub-package provides in-memory `Call` and `Recorder`
+- **Testing** — `argvtest` sub-package provides in-memory `Call` and `Recorder`
   helpers, no process or signal handling needed
 - **CaptureRest** — passthrough commands like `exec` or `ssh` can capture
   trailing arguments
@@ -144,7 +144,7 @@ Options:
 
 ## Design
 
-`cli` models command-line parsing on `net/http` because CLIs and HTTP servers
+`argv` models command-line parsing on `net/http` because CLIs and HTTP servers
 solve the same problem — route input to a handler — and the patterns that work
 for one work for the other. If you know how to write a middleware, a handler,
 and a test against `httptest`, you already know how to use this library.
@@ -164,12 +164,12 @@ or shell integration scripts without reaching into internals.
 
 ## Testing
 
-`clitest` provides in-memory helpers — no process, no `os.Args`, no signal
+`argvtest` provides in-memory helpers — no process, no `os.Args`, no signal
 handling. Construct a call, run the handler, inspect the output:
 
 ```go
-recorder := clitest.NewRecorder()
-call := clitest.NewCall("up --hostname laptop", nil)
+recorder := argvtest.NewRecorder()
+call := argvtest.NewCall("up --hostname laptop", nil)
 err := mux.RunCLI(recorder.Output(), call)
 // recorder.Stdout.String() == "up hostname=laptop dns=true routes=false\n"
 ```
@@ -177,5 +177,5 @@ err := mux.RunCLI(recorder.Output(), call)
 This is the `httptest.NewRequest` + `httptest.ResponseRecorder` pattern applied
 to CLI.
 
-See the [package documentation](https://pkg.go.dev/github.com/mzattahri/cli) for
+See the [package documentation](https://pkg.go.dev/github.com/mzattahri/argv) for
 the full API and examples.
