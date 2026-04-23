@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"iter"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -79,6 +80,56 @@ type HelpArg struct {
 	Usage string
 }
 
+// GlobalFlags returns an iterator over entries in h.Flags where
+// Global is true.
+func (h *Help) GlobalFlags() iter.Seq[HelpFlag] {
+	return filterHelpFlags(h.Flags, true)
+}
+
+// LocalFlags returns an iterator over entries in h.Flags where
+// Global is false.
+func (h *Help) LocalFlags() iter.Seq[HelpFlag] {
+	return filterHelpFlags(h.Flags, false)
+}
+
+// GlobalOptions returns an iterator over entries in h.Options where
+// Global is true.
+func (h *Help) GlobalOptions() iter.Seq[HelpOption] {
+	return filterHelpOptions(h.Options, true)
+}
+
+// LocalOptions returns an iterator over entries in h.Options where
+// Global is false.
+func (h *Help) LocalOptions() iter.Seq[HelpOption] {
+	return filterHelpOptions(h.Options, false)
+}
+
+func filterHelpFlags(flags []HelpFlag, global bool) iter.Seq[HelpFlag] {
+	return func(yield func(HelpFlag) bool) {
+		for _, f := range flags {
+			if f.Global != global {
+				continue
+			}
+			if !yield(f) {
+				return
+			}
+		}
+	}
+}
+
+func filterHelpOptions(options []HelpOption, global bool) iter.Seq[HelpOption] {
+	return func(yield func(HelpOption) bool) {
+		for _, o := range options {
+			if o.Global != global {
+				continue
+			}
+			if !yield(o) {
+				return
+			}
+		}
+	}
+}
+
 // DefaultHelpFunc is the built-in [HelpFunc] used when no override is set.
 // It renders a tabular summary to w.
 func DefaultHelpFunc(w io.Writer, help *Help) error {
@@ -122,21 +173,16 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		return err
 	}
 
-	globalFlags := filterFlags(help.Flags, true)
-	localFlags := filterFlags(help.Flags, false)
-	globalOptions := filterOptions(help.Options, true)
-	localOptions := filterOptions(help.Options, false)
-
-	if err := renderFlagSection(w, "Global Flags", globalFlags); err != nil {
+	if err := renderFlagSection(w, "Global Flags", help.GlobalFlags()); err != nil {
 		return err
 	}
-	if err := renderOptionSection(w, "Global Options", globalOptions); err != nil {
+	if err := renderOptionSection(w, "Global Options", help.GlobalOptions()); err != nil {
 		return err
 	}
-	if err := renderFlagSection(w, "Flags", localFlags); err != nil {
+	if err := renderFlagSection(w, "Flags", help.LocalFlags()); err != nil {
 		return err
 	}
-	if err := renderOptionSection(w, "Options", localOptions); err != nil {
+	if err := renderOptionSection(w, "Options", help.LocalOptions()); err != nil {
 		return err
 	}
 
@@ -146,7 +192,7 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		}
 		rows := make([]helpRow, 0, len(help.Arguments))
 		for _, argument := range help.Arguments {
-			rows = append(rows, helpRow{Name: argument.Name, Usage: argument.Usage})
+			rows = append(rows, helpRow(argument))
 		}
 		if err := renderHelpTable(w, rows); err != nil {
 			return err
@@ -174,58 +220,38 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 	return nil
 }
 
-func filterFlags(flags []HelpFlag, global bool) []HelpFlag {
-	var out []HelpFlag
-	for _, f := range flags {
-		if f.Global == global {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-func filterOptions(options []HelpOption, global bool) []HelpOption {
-	var out []HelpOption
-	for _, o := range options {
-		if o.Global == global {
-			out = append(out, o)
-		}
-	}
-	return out
-}
-
-func renderFlagSection(w io.Writer, title string, entries []HelpFlag) error {
-	if len(entries) == 0 {
-		return nil
-	}
-	if _, err := fmt.Fprintf(w, "\n%s:\n", title); err != nil {
-		return err
-	}
-	rows := make([]helpRow, 0, len(entries))
-	for _, e := range entries {
+func renderFlagSection(w io.Writer, title string, entries iter.Seq[HelpFlag]) error {
+	var rows []helpRow
+	for e := range entries {
 		usage := e.Usage
 		if e.Default {
 			usage += " (default: true)"
 		}
 		rows = append(rows, helpRow{Name: formatInputName(e.Name, e.Short, e.Negatable), Usage: usage})
 	}
-	return renderHelpTable(w, rows)
-}
-
-func renderOptionSection(w io.Writer, title string, entries []HelpOption) error {
-	if len(entries) == 0 {
+	if len(rows) == 0 {
 		return nil
 	}
 	if _, err := fmt.Fprintf(w, "\n%s:\n", title); err != nil {
 		return err
 	}
-	rows := make([]helpRow, 0, len(entries))
-	for _, e := range entries {
+	return renderHelpTable(w, rows)
+}
+
+func renderOptionSection(w io.Writer, title string, entries iter.Seq[HelpOption]) error {
+	var rows []helpRow
+	for e := range entries {
 		usage := e.Usage
 		if e.Default != "" {
 			usage += fmt.Sprintf(" (default: %s)", e.Default)
 		}
 		rows = append(rows, helpRow{Name: formatInputName(e.Name, e.Short, false), Usage: usage})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintf(w, "\n%s:\n", title); err != nil {
+		return err
 	}
 	return renderHelpTable(w, rows)
 }

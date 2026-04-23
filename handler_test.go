@@ -15,9 +15,11 @@ var (
 	_ Runner = &Command{}
 )
 
+type testCtxKey struct{}
+
 func TestCallWithContext(t *testing.T) {
 	origCtx := context.Background()
-	replacedCtx := context.WithValue(context.Background(), struct{}{}, "replaced")
+	replacedCtx := context.WithValue(context.Background(), testCtxKey{}, "replaced")
 	stdin := bytes.NewBufferString("input")
 	call := &Call{
 		ctx:   origCtx,
@@ -106,7 +108,10 @@ func TestCallWithContextPanicsOnNilContext(t *testing.T) {
 			t.Fatal("expected panic")
 		}
 	}()
-	NewCall(context.Background(), nil).WithContext(nil) //nolint:staticcheck // intentional nil context to test panic
+	// Typed-nil context to test that WithContext panics. A literal nil
+	// argument trips SA1012.
+	var ctx context.Context
+	NewCall(context.Background(), nil).WithContext(ctx)
 }
 
 func TestCommandRejectsFlagOptionNameCollision(t *testing.T) {
@@ -145,7 +150,7 @@ func TestCommandRejectsReservedHelpNames(t *testing.T) {
 
 func TestCommandNilInput(t *testing.T) {
 	cmd := &Command{Run: func(out *Output, call *Call) error { return nil }}
-	if fs, os, as := commandInputs(cmd); fs != nil || os != nil || as != nil {
+	if fs, os, as := cmd.inputs(); fs != nil || os != nil || as != nil {
 		t.Fatal("expected nil inputs")
 	}
 }
@@ -156,7 +161,7 @@ func TestCommandInputsAreValidated(t *testing.T) {
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Arg("name", "user name")
-	fs, _, as := commandInputs(cmd)
+	fs, _, as := cmd.inputs()
 	if got := fs.names(); len(got) != 1 || got[0] != "verbose" {
 		t.Fatalf("got %v", got)
 	}
@@ -172,8 +177,8 @@ func TestCommandInputsReturnPointersToFields(t *testing.T) {
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Arg("name", "user name")
 
-	fs1, _, as1 := commandInputs(cmd)
-	fs2, _, as2 := commandInputs(cmd)
+	fs1, _, as1 := cmd.inputs()
+	fs2, _, as2 := cmd.inputs()
 	// inputs() returns pointers to the command's fields, so both calls return
 	// the same underlying data.
 	if fs1 == nil || fs2 == nil || as1 == nil || as2 == nil {
@@ -196,7 +201,7 @@ func TestCommandWithAllInputTypes(t *testing.T) {
 	cmd.Option("host", "", "", "daemon socket")
 	cmd.Arg("name", "user name")
 
-	fs, os, as := commandInputs(cmd)
+	fs, os, as := cmd.inputs()
 	if got := fs.names(); len(got) != 1 || got[0] != "verbose" {
 		t.Fatalf("got %v", got)
 	}
@@ -206,25 +211,15 @@ func TestCommandWithAllInputTypes(t *testing.T) {
 	if got := as.HelpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
-	if !commandCaptureRest(cmd) {
+	if !cmd.CaptureRest {
 		t.Fatal("expected capture rest")
 	}
 }
 
 func TestFlushWriter(t *testing.T) {
-	type flushRecorder struct {
-		flushed bool
-		err     error
-	}
-	fr := &flushRecorder{}
-
-	type writerFlusher struct {
-		*bytes.Buffer
-		recorder *flushRecorder
-	}
-	wf := &writerFlusher{Buffer: &bytes.Buffer{}, recorder: fr}
-	// Test that flushWriter handles a non-flusher gracefully.
-	if err := flushWriter(wf); err != nil {
+	// flushWriter should return nil for writers that do not implement
+	// Flusher — a bare *bytes.Buffer has no Flush method.
+	if err := flushWriter(&bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 }

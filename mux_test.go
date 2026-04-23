@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -246,9 +247,9 @@ func TestMountedMuxHelpIncludesProgramGlobals(t *testing.T) {
 	root.Option("config", "c", "", "config file")
 	sub := NewMux("repo")
 	var gotHelp *Help
-	sub.Handle("init", "Initialize repo", RunnerFunc(func(*Output, *Call) error {
-		return nil
-	}))
+	sub.Handle("init", "Initialize repo", &Command{
+		Run: func(*Output, *Call) error { return nil },
+	})
 	root.Handle("repo", "Repository commands", sub)
 
 	program := &Program{
@@ -263,11 +264,11 @@ func TestMountedMuxHelpIncludesProgramGlobals(t *testing.T) {
 	if gotHelp == nil {
 		t.Fatal("expected help to be rendered")
 	}
-	globalFlags := filterFlags(gotHelp.Flags, true)
+	globalFlags := slices.Collect(gotHelp.GlobalFlags())
 	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
 		t.Fatalf("got global flags %#v", globalFlags)
 	}
-	globalOptions := filterOptions(gotHelp.Options, true)
+	globalOptions := slices.Collect(gotHelp.GlobalOptions())
 	if len(globalOptions) != 1 || globalOptions[0].Name != "config" {
 		t.Fatalf("got global options %#v", globalOptions)
 	}
@@ -571,7 +572,7 @@ func TestMountedMuxHelpShowsAllAncestorFlags(t *testing.T) {
 	sub := NewMux("repo")
 	sub.Option("repository", "r", ".", "repo path")
 	var gotHelp *Help
-	sub.Handle("init", "Initialize", RunnerFunc(func(*Output, *Call) error { return nil }))
+	sub.Handle("init", "Initialize", &Command{Run: func(*Output, *Call) error { return nil }})
 	root.Handle("repo", "Repository commands", sub)
 
 	program := &Program{
@@ -586,11 +587,11 @@ func TestMountedMuxHelpShowsAllAncestorFlags(t *testing.T) {
 		t.Fatal("expected help to be rendered")
 	}
 	// Should include both root mux flag and repo mux option.
-	globalFlags := filterFlags(gotHelp.Flags, true)
+	globalFlags := slices.Collect(gotHelp.GlobalFlags())
 	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
 		t.Fatalf("got global flags %#v", globalFlags)
 	}
-	globalOptions := filterOptions(gotHelp.Options, true)
+	globalOptions := slices.Collect(gotHelp.GlobalOptions())
 	if len(globalOptions) != 1 || globalOptions[0].Name != "repository" {
 		t.Fatalf("got global options %#v", globalOptions)
 	}
@@ -967,6 +968,53 @@ func TestEnvMapInvalidBooleanReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "DEBUG") {
 		t.Fatalf("error should mention env var name, got %q", err)
+	}
+}
+
+func TestMuxMatch(t *testing.T) {
+	mux := NewMux("app")
+	deploy := &Command{Run: func(*Output, *Call) error { return nil }}
+	mux.Handle("deploy", "Deploy", deploy)
+
+	sub := NewMux("repo")
+	initRunner := RunnerFunc(func(*Output, *Call) error { return nil })
+	sub.Handle("init", "", initRunner)
+	mux.Handle("repo", "", sub)
+
+	cases := []struct {
+		name     string
+		tokens   []string
+		wantRun  Runner
+		wantPath string
+	}{
+		{"direct command", []string{"deploy"}, deploy, "app deploy"},
+		{"sub-mux matched shallowly", []string{"repo"}, sub, "app repo"},
+		{"sub-mux with extra tokens stays shallow", []string{"repo", "init"}, sub, "app repo"},
+		{"extra tokens past command", []string{"deploy", "extra"}, deploy, "app deploy"},
+		{"no match at root", []string{"nope"}, nil, ""},
+		{"empty tokens with no root handler", nil, nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, gotPath := mux.Match(tc.tokens)
+			if got != tc.wantRun {
+				t.Fatalf("got runner %v, want %v", got, tc.wantRun)
+			}
+			if gotPath != tc.wantPath {
+				t.Fatalf("got path %q, want %q", gotPath, tc.wantPath)
+			}
+		})
+	}
+}
+
+func TestMuxMatchRootHandler(t *testing.T) {
+	mux := NewMux("app")
+	root := &Command{Run: func(*Output, *Call) error { return nil }}
+	mux.Handle("", "", root)
+
+	got, path := mux.Match(nil)
+	if got != root || path != "app" {
+		t.Fatalf("got (%v, %q), want (root, %q)", got, path, "app")
 	}
 }
 

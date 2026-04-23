@@ -34,8 +34,20 @@ func TestExitErrorMessage(t *testing.T) {
 			t.Fatalf("got %q, want %q", got, "boom")
 		}
 	})
-	t.Run("nil error", func(t *testing.T) {
+	t.Run("nil error zero code", func(t *testing.T) {
 		e := &ExitError{Code: 0}
+		if got := e.Error(); got != "" {
+			t.Fatalf("got %q, want empty", got)
+		}
+	})
+	t.Run("nil error non-zero code", func(t *testing.T) {
+		e := &ExitError{Code: 7}
+		if got := e.Error(); got != "argv: exit code 7" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("nil receiver", func(t *testing.T) {
+		var e *ExitError
 		if got := e.Error(); got != "" {
 			t.Fatalf("got %q, want empty", got)
 		}

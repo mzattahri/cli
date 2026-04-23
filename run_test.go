@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"iter"
 	"os"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -83,22 +83,6 @@ func TestInvokeWithPlainRunner(t *testing.T) {
 	}
 	if got := stdout.String(); got != "plain" {
 		t.Fatalf("got %q, want %q", got, "plain")
-	}
-}
-
-func TestInvokeWithPlainRunnerHelpFlag(t *testing.T) {
-	runner := RunnerFunc(func(out *Output, call *Call) error {
-		return nil
-	})
-
-	var stderr bytes.Buffer
-	program := &Program{Stdout: &bytes.Buffer{}, Stderr: &stderr, Usage: "A test runner"}
-	err := program.Invoke(context.Background(), runner, []string{"app", "--help"})
-	if err != nil {
-		t.Fatalf("got err=%v, want nil", err)
-	}
-	if !strings.Contains(stderr.String(), "Usage:") {
-		t.Fatalf("expected help output, got %q", stderr.String())
 	}
 }
 
@@ -216,8 +200,8 @@ func TestWalkMux(t *testing.T) {
 	if deploy.Description != "Deploy the app" {
 		t.Fatalf("got description %q", deploy.Description)
 	}
-	globalFlags := filterFlags(deploy.Flags, true)
-	localFlags := filterFlags(deploy.Flags, false)
+	globalFlags := slices.Collect(deploy.GlobalFlags())
+	localFlags := slices.Collect(deploy.LocalFlags())
 	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
 		t.Fatalf("got global flags %v", globalFlags)
 	}
@@ -255,8 +239,8 @@ func TestWalkMountedMux(t *testing.T) {
 
 	// Sub-mux commands inherit root's global flags.
 	init := helpByPath["app repo init"]
-	globalFlags := filterFlags(init.Flags, true)
-	globalOptions := filterOptions(init.Options, true)
+	globalFlags := slices.Collect(init.GlobalFlags())
+	globalOptions := slices.Collect(init.GlobalOptions())
 	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
 		t.Fatalf("got global flags %v", globalFlags)
 	}
@@ -280,6 +264,81 @@ func TestWalkMultiSegmentPattern(t *testing.T) {
 	wantPaths := []string{"app", "app repo", "app repo clone", "app repo init"}
 	if !slices.Equal(paths, wantPaths) {
 		t.Fatalf("got paths %v, want %v", paths, wantPaths)
+	}
+}
+
+// customWalker is a minimal third-party Walker that exposes its own
+// static command tree to Program.Walk.
+type customWalker struct {
+	name string
+}
+
+func (c *customWalker) RunCLI(*Output, *Call) error { return nil }
+
+func (c *customWalker) WalkCLI(path string, base *Help) iter.Seq2[string, *Help] {
+	return func(yield func(string, *Help) bool) {
+		if base == nil {
+			base = &Help{}
+		}
+		if !yield(path, &Help{
+			Name:        c.name,
+			FullPath:    path,
+			Usage:       base.Usage,
+			Description: base.Description,
+			Flags:       slices.Clone(base.Flags),
+			Options:     slices.Clone(base.Options),
+		}) {
+			return
+		}
+		yield(path+" static-child", &Help{
+			Name:     "static-child",
+			FullPath: path + " static-child",
+			Usage:    "A synthetic child",
+			Flags:    slices.Clone(base.Flags),
+			Options:  slices.Clone(base.Options),
+		})
+	}
+}
+
+func TestWalkCustomWalker(t *testing.T) {
+	// Top-level external Walker: Program.Walk dispatches via the interface.
+	program := &Program{Name: "app", Usage: "Custom CLI"}
+	cw := &customWalker{name: "app"}
+
+	var paths []string
+	for path := range program.Walk(cw) {
+		paths = append(paths, path)
+	}
+	want := []string{"app", "app static-child"}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("got %v, want %v", paths, want)
+	}
+}
+
+func TestWalkCustomWalkerInMuxTree(t *testing.T) {
+	// External Walker registered inside a Mux: walkChildren dispatches
+	// via the Walker interface, and ancestor globals reach the child.
+	mux := NewMux("app")
+	mux.Flag("verbose", "v", false, "verbose")
+	mux.Handle("plug", "External subtree", &customWalker{name: "plug"})
+
+	var paths []string
+	helpByPath := map[string]*Help{}
+	for path, help := range (&Program{}).Walk(mux) {
+		paths = append(paths, path)
+		helpByPath[path] = help
+	}
+
+	want := []string{"app", "app plug", "app plug static-child"}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("got %v, want %v", paths, want)
+	}
+
+	// The external walker received the mux's verbose flag as a global.
+	plug := helpByPath["app plug"]
+	globals := slices.Collect(plug.GlobalFlags())
+	if len(globals) != 1 || globals[0].Name != "verbose" {
+		t.Fatalf("got globals %v", globals)
 	}
 }
 

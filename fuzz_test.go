@@ -1,6 +1,7 @@
 package argv
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -43,8 +44,27 @@ func FuzzParseInput(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, input string) {
 		args := strings.Fields(input)
-		// Must not panic.
-		parseInput(flags, options, args, false)
+		parsed, err := parseInput(flags, options, args, false)
+		if err != nil {
+			// errFlagHelp is the only sentinel; every other error
+			// must be non-nil and must not produce a parsed result.
+			if !errors.Is(err, errFlagHelp) && parsed != nil {
+				t.Fatalf("non-help error must return nil parsedInput, got %+v", parsed)
+			}
+			return
+		}
+		// Success: every entry in parsed.flags must name a declared flag;
+		// likewise for options. No unknown names should slip through.
+		for name := range parsed.flags.All() {
+			if !flags.hasName(name) {
+				t.Fatalf("parsed unknown flag %q", name)
+			}
+		}
+		for name := range parsed.options.All() {
+			if !options.hasName(name) {
+				t.Fatalf("parsed unknown option %q", name)
+			}
+		}
 	})
 }
 

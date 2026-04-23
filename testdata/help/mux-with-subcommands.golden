@@ -1,0 +1,16 @@
+app repo - Manage repositories
+
+Create, clone, and manage git repositories.
+
+Usage:
+  app repo [command] [options]
+
+Global Flags:
+  -v, --verbose  Verbose output
+
+Commands:
+  clone   Clone an existing repository
+  init    Initialize a repository
+  status  Show repository status
+
+Use "app repo [command] --help" for more information.

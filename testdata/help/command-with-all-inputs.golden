@@ -1,0 +1,22 @@
+app deploy - Deploy the app
+
+Deploys the application to the given target.
+
+Usage:
+  app deploy [options] [arguments] [args...]
+
+Global Flags:
+  -v, --verbose  Verbose output
+
+Global Options:
+  -c, --config  Config file
+
+Flags:
+  -f, --force  Skip confirmation
+  --dry-run    Print plan without executing (default: true)
+
+Options:
+  -r, --region  Target region (default: us-east)
+
+Arguments:
+  <target>  Deploy target name

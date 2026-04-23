@@ -28,12 +28,32 @@ type argSpec struct {
 	Usage string
 }
 
-// A Call holds the parsed input for a single command invocation.
+// A Call holds the parsed input for a single command invocation. The
+// zero value is not usable; build one through [NewCall] or
+// [Program.Invoke].
 type Call struct {
 	ctx context.Context
 
-	// Pattern is the matched command path (e.g. "app deploy").
+	// Pattern is the matched command path, e.g. "app deploy". A
+	// dispatcher sets it before invoking a child [Runner] so errors
+	// and help output report the path the user typed.
 	Pattern string
+
+	// Argv holds the unconsumed argument tokens. A leaf [Runner]
+	// parses Argv to populate Flags, Options, and Args. A dispatcher
+	// updates Argv on the handoff call to reflect what remains for
+	// the child.
+	Argv []string
+
+	// Help carries ancestor-aware help data inherited from parent
+	// dispatchers: Usage and Description for this routing level, and
+	// accumulated global Flags and Options. A leaf [Runner] extends
+	// it with its own contribution before rendering. Nil at the root.
+	Help *Help
+
+	// HelpFunc renders help output. A nil HelpFunc selects
+	// [DefaultHelpFunc].
+	HelpFunc HelpFunc
 
 	// Stdin is the standard input stream.
 	Stdin io.Reader
@@ -41,10 +61,10 @@ type Call struct {
 	// Env resolves environment variables.
 	Env LookupFunc
 
-	// Flags holds boolean flags from all levels (mux and command).
+	// Flags holds boolean flags from all levels, mux and command.
 	Flags FlagSet
 
-	// Options holds option values from all levels (mux and command).
+	// Options holds option values from all levels, mux and command.
 	Options OptionSet
 
 	// Args holds bound positional arguments.
@@ -53,32 +73,17 @@ type Call struct {
 	// Rest holds trailing positional arguments when
 	// [Command.CaptureRest] is set.
 	Rest []string
-}
 
-// callState carries dispatch metadata through the context.
-// It holds only routing state consumed by the dispatch machinery.
-type callState struct {
-	argv     []string
+	// argNames preserves declared argument order for [Call.String].
 	argNames []string
 }
 
-type callStateKey struct{}
-
-func getState(ctx context.Context) *callState {
-	s, _ := ctx.Value(callStateKey{}).(*callState)
-	return s
-}
-
-func setState(ctx context.Context, s *callState) context.Context {
-	return context.WithValue(ctx, callStateKey{}, s)
-}
-
-// A LookupFunc resolves a name to a value. It follows the signature
+// A LookupFunc resolves a name to a value. It matches the signature
 // of [os.LookupEnv].
 type LookupFunc func(string) (string, bool)
 
-// NewLookupFunc returns a [LookupFunc] backed by env.
-// When env is nil the returned function always reports a miss.
+// NewLookupFunc returns a [LookupFunc] backed by env. A nil env
+// produces a function that always reports a miss.
 func NewLookupFunc(env map[string]string) LookupFunc {
 	if env == nil {
 		return func(string) (string, bool) { return "", false }
@@ -89,14 +94,14 @@ func NewLookupFunc(env map[string]string) LookupFunc {
 	}
 }
 
-// NewCall returns a new [Call] for the given argument tokens.
-// It panics if ctx is nil.
+// NewCall returns a new [Call] for argv. It panics if ctx is nil.
 func NewCall(ctx context.Context, argv []string) *Call {
 	if ctx == nil {
 		panic("argv: nil context")
 	}
 	return &Call{
-		ctx:     setState(ctx, &callState{argv: slices.Clone(argv)}),
+		ctx:     ctx,
+		Argv:    slices.Clone(argv),
 		Env:     NewLookupFunc(nil),
 		Flags:   FlagSet{},
 		Options: OptionSet{},
@@ -104,27 +109,25 @@ func NewCall(ctx context.Context, argv []string) *Call {
 	}
 }
 
-// WithContext returns a copy of c with ctx replacing the original
-// context. Sets and slices are deep-copied.
-// It panics if ctx is nil.
+// WithContext returns a copy of c with ctx replacing the context.
+// Sets and slices are deep-copied. It panics if ctx is nil.
 func (c *Call) WithContext(ctx context.Context) *Call {
 	if ctx == nil {
 		panic("argv: nil context")
 	}
-	if s := getState(c.ctx); s != nil {
-		ctx = setState(ctx, s)
-	}
 	c2 := *c
 	c2.ctx = ctx
+	c2.Argv = slices.Clone(c.Argv)
 	c2.Flags = c.Flags.Clone()
 	c2.Options = c.Options.Clone()
 	c2.Args = c.Args.Clone()
 	c2.Rest = slices.Clone(c.Rest)
+	c2.argNames = slices.Clone(c.argNames)
 	return &c2
 }
 
-// Context returns the call's context, defaulting to [context.Background]
-// if the context is nil.
+// Context returns the call's context. A nil context returns
+// [context.Background].
 func (c *Call) Context() context.Context {
 	if c.ctx == nil {
 		return context.Background()
@@ -149,12 +152,7 @@ func (c *Call) String() string {
 	}
 	tokens = append(tokens, canonicalFlagTokens("flag", c.Flags)...)
 	tokens = append(tokens, canonicalOptionTokens("opt", c.Options)...)
-
-	var argNames []string
-	if s := getState(c.ctx); s != nil {
-		argNames = s.argNames
-	}
-	tokens = append(tokens, canonicalArgTokens(c.Args, argNames)...)
+	tokens = append(tokens, canonicalArgTokens(c.Args, c.argNames)...)
 
 	for _, token := range c.Rest {
 		tokens = append(tokens, "rest:"+quoteToken(token))

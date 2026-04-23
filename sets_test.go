@@ -23,10 +23,10 @@ func TestFlagSet(t *testing.T) {
 		if s.Get("missing") { t.Error("expected false") }
 	})
 
-	t.Run("Explicit", func(t *testing.T) {
-		if !s.Explicit("verbose") { t.Error("expected true") }
-		if !s.Explicit("force") { t.Error("expected true for force (explicitly set)") }
-		if s.Explicit("missing") { t.Error("expected false") }
+	t.Run("Lookup", func(t *testing.T) {
+		if v, ok := s.Lookup("verbose"); !ok || !v { t.Errorf("got (%v, %v)", v, ok) }
+		if v, ok := s.Lookup("force"); !ok || v { t.Errorf("got (%v, %v) for force (explicitly set)", v, ok) }
+		if _, ok := s.Lookup("missing"); ok { t.Error("expected ok=false") }
 	})
 
 	t.Run("String", func(t *testing.T) {
@@ -90,9 +90,9 @@ func TestOptionSet(t *testing.T) {
 		}
 	})
 
-	t.Run("Explicit", func(t *testing.T) {
-		if !s.Explicit("host") { t.Error("expected true") }
-		if s.Explicit("missing") { t.Error("expected false") }
+	t.Run("Lookup", func(t *testing.T) {
+		if v, ok := s.Lookup("host"); !ok || v != "localhost" { t.Errorf("got (%q, %v)", v, ok) }
+		if _, ok := s.Lookup("missing"); ok { t.Error("expected ok=false") }
 	})
 
 	t.Run("String", func(t *testing.T) {
@@ -129,9 +129,9 @@ func TestArgSet(t *testing.T) {
 		if s.Get("missing") != "" { t.Errorf("got %q", s.Get("missing")) }
 	})
 
-	t.Run("Explicit", func(t *testing.T) {
-		if !s.Explicit("path") { t.Error("expected true") }
-		if s.Explicit("missing") { t.Error("expected false") }
+	t.Run("Lookup", func(t *testing.T) {
+		if v, ok := s.Lookup("path"); !ok || v != "/tmp" { t.Errorf("got (%q, %v)", v, ok) }
+		if _, ok := s.Lookup("missing"); ok { t.Error("expected ok=false") }
 	})
 
 	t.Run("Set", func(t *testing.T) {

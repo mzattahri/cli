@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"strings"
 
 	"mz.attahri.com/code/argv"
@@ -13,22 +14,27 @@ import (
 
 type authContextKey struct{}
 
-func ExampleMux_Handle_subtree() {
-	repo := argv.NewMux("repo")
-	repo.Handle("init", "Initialize a repository", argv.RunnerFunc(func(out *argv.Output, call *argv.Call) error {
-		_, err := fmt.Fprint(out.Stdout, "initialized")
-		return err
-	}))
+func Example() {
+	mux := argv.NewMux("name")
+	mux.Flag("uppercase", "u", false, "Uppercase the full name")
+	mux.Option("separator", "s", " ", "Separator between names")
 
-	mux := argv.NewMux("app")
-	mux.Handle("repo", "Manage repositories", repo)
+	cmd := &argv.Command{
+		Run: func(out *argv.Output, call *argv.Call) error {
+			name := call.Args.Get("firstname") + call.Options.Get("separator") + call.Args.Get("lastname")
+			if call.Flags.Get("uppercase") {
+				name = strings.ToUpper(name)
+			}
+			_, err := fmt.Fprintln(out.Stdout, name)
+			return err
+		},
+	}
+	cmd.Arg("firstname", "First name")
+	cmd.Arg("lastname", "Last name")
+	mux.Handle("", "Print a full name", cmd)
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	program := &argv.Program{Stdout: &stdout, Stderr: &stderr}
-	_ = program.Invoke(context.Background(), mux, []string{"app", "repo", "init"})
-	fmt.Print(stdout.String())
-	// Output: initialized
+	_ = (&argv.Program{}).Invoke(context.Background(), mux, []string{"name", "--uppercase", "--separator", "-", "John", "Doe"})
+	// Output: JOHN-DOE
 }
 
 func ExampleCommand() {
@@ -196,57 +202,6 @@ func ExampleCall_WithContext() {
 	// Output: alice
 }
 
-func ExampleMux_Handle_optionsOnly() {
-	cmd := &argv.Command{
-		Run: func(out *argv.Output, call *argv.Call) error {
-			host := call.Options.Get("host")
-			_, err := fmt.Fprint(out.Stdout, host)
-			return err
-		},
-	}
-	cmd.Option("host", "", "", "daemon socket")
-
-	mux := argv.NewMux("app")
-	mux.Handle("status", "Print status", cmd)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	program := &argv.Program{Stdout: &stdout, Stderr: &stderr}
-	_ = program.Invoke(context.Background(), mux, []string{"app", "status", "--host", "unix:///tmp/docker.sock"})
-	fmt.Print(stdout.String())
-	// Output: unix:///tmp/docker.sock
-}
-
-func ExampleMux_HandleFunc() {
-	mux := argv.NewMux("app")
-	mux.HandleFunc("version", "Print version", func(out *argv.Output, call *argv.Call) error {
-		_, err := fmt.Fprint(out.Stdout, "v1.0.0")
-		return err
-	})
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	program := &argv.Program{Stdout: &stdout, Stderr: &stderr}
-	_ = program.Invoke(context.Background(), mux, []string{"app", "version"})
-	fmt.Print(stdout.String())
-	// Output: v1.0.0
-}
-
-func ExampleMux_Flag() {
-	mux := argv.NewMux("app")
-	mux.Flag("verbose", "v", false, "Enable verbose output")
-	mux.Handle("status", "Print status", argv.RunnerFunc(func(out *argv.Output, call *argv.Call) error {
-		_, err := fmt.Fprintf(out.Stdout, "verbose=%t", call.Flags.Get("verbose"))
-		return err
-	}))
-
-	var stdout bytes.Buffer
-	program := &argv.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}}
-	_ = program.Invoke(context.Background(), mux, []string{"app", "--verbose", "status"})
-	fmt.Print(stdout.String())
-	// Output: verbose=true
-}
-
 func ExampleMux_Flag_submux() {
 	root := argv.NewMux("app")
 	root.Flag("verbose", "v", false, "Enable verbose output")
@@ -324,9 +279,8 @@ func ExampleCommand_Completer() {
 }
 
 func ExampleEnvMiddleware() {
-	// EnvMiddleware resolves environment variables for flags/options
-	// not provided on the command line. It runs before ApplyDefaults,
-	// so Has reports only CLI-provided values.
+	// EnvMiddleware resolves environment variables for flags and
+	// options not set on the command line. CLI values take precedence.
 	env := argv.NewLookupFunc(map[string]string{
 		"API_HOST":  "env.example.com",
 		"API_TOKEN": "secret",
@@ -448,4 +402,85 @@ func ExampleProgram_Walk() {
 	// app deploy — Deploy the app
 	// app repo — Manage repositories
 	// app repo init — Initialize a repository
+}
+
+func ExampleMux_Match() {
+	mux := argv.NewMux("app")
+	deploy := argv.RunnerFunc(func(*argv.Output, *argv.Call) error { return nil })
+	mux.Handle("deploy", "Deploy the app", deploy)
+
+	runner, path := mux.Match([]string{"deploy", "production"})
+	fmt.Printf("matched=%t path=%q\n", runner != nil, path)
+
+	runner, path = mux.Match([]string{"unknown"})
+	fmt.Printf("matched=%t path=%q\n", runner != nil, path)
+	// Output:
+	// matched=true path="app deploy"
+	// matched=false path=""
+}
+
+// greetingHelper is a custom Runner that implements [argv.Helper] so
+// that [argv.Mux] extracts its Description at registration time and
+// [argv.Program.Walk] enumerates it with full help metadata.
+type greetingHelper struct{}
+
+func (greetingHelper) RunCLI(out *argv.Output, call *argv.Call) error {
+	_, err := fmt.Fprintln(out, "hi")
+	return err
+}
+
+func (greetingHelper) HelpCLI() argv.Help {
+	return argv.Help{
+		Description: "Print a fixed greeting",
+		Flags: []argv.HelpFlag{
+			{Name: "loud", Short: "l", Usage: "Shout the greeting"},
+		},
+	}
+}
+
+func ExampleHelper() {
+	mux := argv.NewMux("app")
+	mux.Handle("greet", "Say hi", greetingHelper{})
+
+	for path, help := range (&argv.Program{}).Walk(mux) {
+		if path != "app greet" {
+			continue
+		}
+		fmt.Printf("desc=%q flags=%d\n", help.Description, len(help.Flags))
+	}
+	// Output: desc="Print a fixed greeting" flags=1
+}
+
+// staticWalker is a third-party dispatcher that yields a synthetic
+// subtree. Implementing [argv.Walker] lets it participate in
+// [argv.Program.Walk] as a first-class node.
+type staticWalker struct{ name string }
+
+func (s staticWalker) RunCLI(*argv.Output, *argv.Call) error { return nil }
+
+func (s staticWalker) WalkCLI(path string, base *argv.Help) iter.Seq2[string, *argv.Help] {
+	return func(yield func(string, *argv.Help) bool) {
+		if !yield(path, &argv.Help{Name: s.name, FullPath: path, Usage: "Synthetic root"}) {
+			return
+		}
+		child := path + " child"
+		yield(child, &argv.Help{Name: "child", FullPath: child, Usage: "Synthetic child"})
+	}
+}
+
+func ExampleWalker() {
+	mux := argv.NewMux("app")
+	mux.Handle("plug", "External subtree", staticWalker{name: "plug"})
+
+	for path, help := range (&argv.Program{}).Walk(mux) {
+		if help.Usage == "" {
+			fmt.Println(path)
+		} else {
+			fmt.Printf("%s — %s\n", path, help.Usage)
+		}
+	}
+	// Output:
+	// app
+	// app plug — Synthetic root
+	// app plug child — Synthetic child
 }

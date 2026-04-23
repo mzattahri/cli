@@ -16,8 +16,9 @@ import (
 //	true:  1, t, true, y, yes, on
 //	false: 0, f, false, n, no, off
 //
-// An empty value is treated as "not set." An unparseable value returns
-// an error. For options, the environment value is set directly.
+// An empty value is treated as "not set" for both flags and options.
+// A non-empty flag value that does not parse as a boolean returns an
+// error; option values are used as-is.
 //
 //	mw := argv.EnvMiddleware(
 //		map[string]string{"verbose": "VERBOSE"},
@@ -28,7 +29,7 @@ func EnvMiddleware(flags, options map[string]string, lookupEnv LookupFunc) Middl
 	return func(next Runner) Runner {
 		return RunnerFunc(func(out *Output, call *Call) error {
 			for name, envVar := range flags {
-				if call.Flags.Explicit(name) {
+				if _, ok := call.Flags.Lookup(name); ok {
 					continue
 				}
 				val, ok := lookupEnv(envVar)
@@ -37,16 +38,16 @@ func EnvMiddleware(flags, options map[string]string, lookupEnv LookupFunc) Middl
 				}
 				b, err := parseEnvBool(val)
 				if err != nil {
-					return fmt.Errorf("argv: env var %s: %w", envVar, err)
+					return Errorf(ExitUsage, "argv: env var %s: %w", envVar, err)
 				}
 				call.Flags.Set(name, b)
 			}
 			for name, envVar := range options {
-				if call.Options.Explicit(name) {
+				if _, ok := call.Options.Lookup(name); ok {
 					continue
 				}
 				val, ok := lookupEnv(envVar)
-				if !ok {
+				if !ok || val == "" {
 					continue
 				}
 				call.Options.Set(name, val)

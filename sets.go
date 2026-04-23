@@ -227,7 +227,7 @@ func (s *argSpecs) names() []string {
 	return names
 }
 
-// Entry types carry a value and its provenance.
+// Entry types carry a value and whether a caller set it.
 
 type flagEntry struct {
 	value    bool
@@ -244,8 +244,8 @@ type argEntry struct {
 	explicit bool
 }
 
-// A FlagSet holds boolean flag values with provenance tracking.
-// The zero value is an empty, usable set.
+// A FlagSet holds boolean flag values. The zero value is an empty,
+// usable set.
 type FlagSet struct{ m map[string]flagEntry }
 
 // String returns a space-separated list of present flags (e.g. "--verbose").
@@ -260,7 +260,7 @@ func (s FlagSet) String() string {
 	return strings.Join(names, " ")
 }
 
-// Has reports whether name exists in the set (explicit or default).
+// Has reports whether name has an entry in the set.
 func (s FlagSet) Has(name string) bool {
 	if s.m == nil {
 		return false
@@ -277,17 +277,22 @@ func (s FlagSet) Get(name string) bool {
 	return s.m[name].value
 }
 
-// Explicit reports whether name was set on the command line rather than
-// applied as a default.
-func (s FlagSet) Explicit(name string) bool {
+// Lookup returns the value of name. The ok result is true if the
+// value was set by a caller and false for spec defaults or missing
+// entries.
+func (s FlagSet) Lookup(name string) (value bool, ok bool) {
 	if s.m == nil {
-		return false
+		return false, false
 	}
-	e, ok := s.m[name]
-	return ok && e.explicit
+	e, has := s.m[name]
+	if !has {
+		return false, false
+	}
+	return e.value, e.explicit
 }
 
-// Set associates name with value, marking it as explicitly provided.
+// Set associates name with value. [FlagSet.Lookup] reports the entry
+// as caller-set.
 func (s *FlagSet) Set(name string, value bool) {
 	if s.m == nil {
 		s.m = make(map[string]flagEntry)
@@ -336,10 +341,9 @@ func (s FlagSet) All() iter.Seq2[string, bool] {
 	}
 }
 
-// An OptionSet holds named value options with provenance tracking.
-// Each option may carry multiple values when repeated on the command
-// line (e.g. --tag foo --tag bar). [OptionSet.Get] returns the last
-// value; [OptionSet.Values] returns all values.
+// An OptionSet holds named value options. An option may carry multiple
+// values when repeated, such as --tag foo --tag bar. Get returns the
+// last value; Values returns all values.
 type OptionSet struct{ m map[string]optionEntry }
 
 // String returns a space-separated list of options (e.g. "--host localhost").
@@ -355,7 +359,7 @@ func (s OptionSet) String() string {
 	return strings.Join(pairs, " ")
 }
 
-// Has reports whether name exists in the set (explicit or default).
+// Has reports whether name has an entry in the set.
 func (s OptionSet) Has(name string) bool {
 	if s.m == nil {
 		return false
@@ -378,8 +382,8 @@ func (s OptionSet) Get(name string) string {
 	return e.values[len(e.values)-1]
 }
 
-// Values returns all values associated with name in the order they
-// appeared on the command line. It returns nil if name is not present.
+// Values returns all values associated with name in insertion order.
+// It returns nil if name is not present.
 func (s OptionSet) Values(name string) []string {
 	if s.m == nil {
 		return nil
@@ -391,18 +395,23 @@ func (s OptionSet) Values(name string) []string {
 	return slices.Clone(e.values)
 }
 
-// Explicit reports whether name was set on the command line rather than
-// applied as a default.
-func (s OptionSet) Explicit(name string) bool {
+// Lookup returns the last value associated with name. The ok result
+// is true if the value was set by a caller and false for spec defaults
+// or missing entries. For all values of a repeated option, use
+// [OptionSet.Values].
+func (s OptionSet) Lookup(name string) (value string, ok bool) {
 	if s.m == nil {
-		return false
+		return "", false
 	}
-	e, ok := s.m[name]
-	return ok && e.explicit
+	e, has := s.m[name]
+	if !has {
+		return "", false
+	}
+	return e.values[len(e.values)-1], e.explicit
 }
 
-// Set replaces name with a single value, marking it as explicitly
-// provided.
+// Set replaces name with a single value. [OptionSet.Lookup] reports
+// the entry as caller-set.
 func (s *OptionSet) Set(name string, value string) {
 	if s.m == nil {
 		s.m = make(map[string]optionEntry)
@@ -410,8 +419,8 @@ func (s *OptionSet) Set(name string, value string) {
 	s.m[name] = optionEntry{values: []string{value}, explicit: true}
 }
 
-// Add appends value to the values associated with name, marking it as
-// explicitly provided.
+// Add appends value to the values associated with name.
+// [OptionSet.Lookup] reports the entry as caller-set.
 func (s *OptionSet) Add(name string, value string) {
 	if s.m == nil {
 		s.m = make(map[string]optionEntry)
@@ -471,7 +480,7 @@ func (s OptionSet) All() iter.Seq2[string, []string] {
 	}
 }
 
-// An ArgSet holds bound positional arguments with provenance tracking.
+// An ArgSet holds bound positional arguments.
 type ArgSet struct{ m map[string]argEntry }
 
 // String returns a space-separated list of arguments (e.g. "<path> /tmp").
@@ -484,7 +493,7 @@ func (s ArgSet) String() string {
 	return strings.Join(pairs, " ")
 }
 
-// Has reports whether name exists in the set.
+// Has reports whether name has an entry in the set.
 func (s ArgSet) Has(name string) bool {
 	if s.m == nil {
 		return false
@@ -502,17 +511,22 @@ func (s ArgSet) Get(name string) string {
 	return s.m[name].value
 }
 
-// Explicit reports whether name was set on the command line rather than
-// applied as a default.
-func (s ArgSet) Explicit(name string) bool {
+// Lookup returns the value of name. The ok result is true if the
+// value was set by a caller and false for spec defaults or missing
+// entries.
+func (s ArgSet) Lookup(name string) (value string, ok bool) {
 	if s.m == nil {
-		return false
+		return "", false
 	}
-	e, ok := s.m[name]
-	return ok && e.explicit
+	e, has := s.m[name]
+	if !has {
+		return "", false
+	}
+	return e.value, e.explicit
 }
 
-// Set associates name with value, marking it as explicitly provided.
+// Set associates name with value. [ArgSet.Lookup] reports the entry
+// as caller-set.
 func (s *ArgSet) Set(name string, value string) {
 	if s.m == nil {
 		s.m = make(map[string]argEntry)

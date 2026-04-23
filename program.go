@@ -9,32 +9,29 @@ import (
 	"slices"
 )
 
-// A Program describes the process environment for a CLI invocation.
+// A Program binds a [Runner] to the process environment. The zero
+// value is a valid Program that reads [os.Stdin] and writes to
+// [os.Stdout] and [os.Stderr].
 type Program struct {
-	// Name is shown in usage output. When empty, [Program.Invoke]
-	// uses args[0].
+	// Name is shown in usage output. An empty Name falls back to args[0].
 	Name string
 
-	// Stdout is the standard output writer. When nil, [Program.Invoke]
-	// uses [os.Stdout].
+	// Stdout is the standard output writer. A nil Stdout selects [os.Stdout].
 	Stdout io.Writer
 
-	// Stderr is the standard error writer. When nil, [Program.Invoke]
-	// uses [os.Stderr].
+	// Stderr is the standard error writer. A nil Stderr selects [os.Stderr].
 	Stderr io.Writer
 
-	// Stdin is the standard input reader. When nil, [Program.Invoke]
-	// uses [os.Stdin].
+	// Stdin is the standard input reader. A nil Stdin selects [os.Stdin].
 	Stdin io.Reader
 
-	// Env resolves environment variables. When nil,
-	// [Program.Invoke] uses [os.LookupEnv].
+	// Env resolves environment variables. A nil Env selects [os.LookupEnv].
 	Env LookupFunc
 
 	// Usage is the short summary shown in top-level help output.
 	Usage string
 
-	// Description is longer free-form help text.
+	// Description is the longer free-form help text.
 	Description string
 
 	// HelpFunc overrides the default help renderer.
@@ -53,9 +50,22 @@ func (p *Program) output() *Output {
 	return &Output{Stdout: stdout, Stderr: stderr}
 }
 
-// Invoke strips args[0] as the program name, runs the given runner, and
+// InvokeAndExit is the convenience wrapper most main() functions
+// want: it calls [Program.Invoke] and passes the result to [Exit],
+// which prints a non-help error to [os.Stderr] and calls [os.Exit]
+// with the mapped code. It never returns.
+//
+// Use [Program.Invoke] directly when you need the error value — in
+// tests, or when embedding argv in a program that manages its own
+// exit lifecycle.
+func (p *Program) InvokeAndExit(ctx context.Context, runner Runner, args []string) {
+	Exit(p.Invoke(ctx, runner, args))
+}
+
+// Invoke strips args[0] as the program name, runs runner, and
 // reports the result as an [*ExitError]. An explicit --help request
-// returns nil after rendering help. Invoke panics if ctx is nil.
+// returns nil after rendering help. Invoke panics if ctx or runner is
+// nil.
 func (p *Program) Invoke(ctx context.Context, runner Runner, args []string) *ExitError {
 	if ctx == nil {
 		panic("argv: nil context")
@@ -88,13 +98,20 @@ func (p *Program) Invoke(ctx context.Context, runner Runner, args []string) *Exi
 		}
 	}
 	call := &Call{
-		ctx:   setState(ctx, &callState{argv: slices.Clone(args)}),
-		Stdin: stdin,
-		Env:   lookupEnv,
+		ctx:     ctx,
+		Pattern: programName,
+		Argv:    slices.Clone(args),
+		Help: &Help{
+			Usage:       p.Usage,
+			Description: p.Description,
+		},
+		HelpFunc: p.HelpFunc,
+		Stdin:    stdin,
+		Env:      lookupEnv,
 	}
 
 	out := p.output()
-	err := invokeRunnerWithProgram(p, runner, out, call, programName)
+	err := runner.RunCLI(out, call)
 
 	// Flush stdout/stderr after the runner returns.
 	if fErr := out.Flush(); fErr != nil && err == nil {
@@ -122,72 +139,63 @@ func (p *Program) programName(runner Runner) string {
 }
 
 // Walk returns an iterator over every command path reachable from
-// runner. Each entry yields the full command path and a [*Help]
-// struct with accumulated flags and options from all routing levels.
+// runner. Each entry yields the full command path and a [*Help] with
+// accumulated flags and options from all routing levels. Walk visits
+// nodes depth-first, sorted alphabetically at each level.
 //
-// Walk visits nodes depth-first, sorted alphabetically at each level.
+// Walk delegates to runner's [Walker] implementation. A Runner that
+// does not implement Walker yields a single entry using [Program.Usage]
+// and [Program.Description].
 func (p *Program) Walk(runner Runner) iter.Seq2[string, *Help] {
 	return func(yield func(string, *Help) bool) {
 		name := p.programName(runner)
+		base := &Help{Usage: p.Usage, Description: p.Description}
 
-		mux, ok := runner.(*Mux)
-		if !ok {
-			yield(name, &Help{
-				Name:        name,
-				FullPath:    name,
-				Usage:       p.Usage,
-				Description: p.Description,
-			})
+		if w, ok := runner.(Walker); ok {
+			for path, help := range w.WalkCLI(name, base) {
+				if !yield(path, help) {
+					return
+				}
+			}
 			return
 		}
 
-		walkMux(mux, name, p.Usage, p.Description, nil, nil, yield)
+		yield(name, &Help{
+			Name:        name,
+			FullPath:    name,
+			Usage:       p.Usage,
+			Description: p.Description,
+		})
 	}
 }
 
-func walkMux(m *Mux, path, usage, description string, ancestorFlags []HelpFlag, ancestorOptions []HelpOption, yield func(string, *Help) bool) bool {
-	muxFlags, muxOptions := m.muxInputs()
-	globalFlags, globalOptions := accumulateHelp(
-		&ancestorHelp{flags: ancestorFlags, options: ancestorOptions},
-		muxFlags, muxOptions, m.NegateFlags,
-	)
+func walkChildren(n *node, basePath string, ancestorFlags []HelpFlag, ancestorOptions []HelpOption, yield func(string, *Help) bool) bool {
+	for _, name := range n.childNames() {
+		cn := n.children[name]
+		childPath := joinedPath(basePath, name)
 
-	name := lastPathSegment(path)
-	help := &Help{
-		Name:        name,
-		FullPath:    path,
-		Usage:       usage,
-		Description: description,
-		Commands:    m.root.usageCommands(""),
-		Flags:       slices.Clone(globalFlags),
-		Options:     slices.Clone(globalOptions),
-	}
-	if !yield(path, help) {
-		return false
-	}
-
-	return walkChildren(&m.root, path, globalFlags, globalOptions, yield)
-}
-
-func walkChildren(n *node, basePath string, globalFlags []HelpFlag, globalOptions []HelpOption, yield func(string, *Help) bool) bool {
-	for _, info := range n.childInfos("") {
-		childPath := joinedPath(basePath, info.name)
-		cn := info.node
-
-		if sub, ok := cn.commandRunner().(*Mux); ok {
-			if !walkMux(sub, childPath, cn.usage(), cn.description(), globalFlags, globalOptions, yield) {
-				return false
+		if w, ok := cn.commandRunner().(Walker); ok {
+			childBase := &Help{
+				Usage:       cn.usage(),
+				Description: cn.description(),
+				Flags:       ancestorFlags,
+				Options:     ancestorOptions,
+			}
+			for p, h := range w.WalkCLI(childPath, childBase) {
+				if !yield(p, h) {
+					return false
+				}
 			}
 			continue
 		}
 
-		childHelp := buildNodeHelp(cn, info.name, childPath, globalFlags, globalOptions)
+		childHelp := buildNodeHelp(cn, name, childPath, ancestorFlags, ancestorOptions)
 		if !yield(childPath, childHelp) {
 			return false
 		}
 
 		if len(cn.children) > 0 {
-			if !walkChildren(cn, childPath, globalFlags, globalOptions, yield) {
+			if !walkChildren(cn, childPath, ancestorFlags, ancestorOptions, yield) {
 				return false
 			}
 		}
@@ -205,46 +213,16 @@ func buildNodeHelp(n *node, name, fullPath string, globalFlags []HelpFlag, globa
 		Flags:       slices.Clone(globalFlags),
 		Options:     slices.Clone(globalOptions),
 	}
-	if cmd := n.command; cmd != nil {
-		fs, os, as := cmd.inputs()
-		help.Flags = append(help.Flags, fs.helpEntriesNegatable(cmd.NegateFlags)...)
-		help.Options = append(help.Options, os.helpEntries()...)
-		if as != nil {
-			help.Arguments = as.HelpArguments()
+	if h, ok := n.runner.(Helper); ok {
+		contrib := h.HelpCLI()
+		if help.Description == "" {
+			help.Description = contrib.Description
 		}
-		help.CaptureRest = cmd.CaptureRest
+		help.Flags = append(help.Flags, contrib.Flags...)
+		help.Options = append(help.Options, contrib.Options...)
+		help.Arguments = contrib.Arguments
+		help.CaptureRest = contrib.CaptureRest
 	}
 	return help
 }
 
-func invokeRunnerWithProgram(program *Program, runner Runner, out *Output, call *Call, fullPath string) error {
-	if mux, ok := runner.(*Mux); ok {
-		name := fullPath
-		if name == "" {
-			name = mux.Name
-		}
-		return mux.runWithPath(out, call, name, program.Usage, program.Description, nil, program.HelpFunc)
-	}
-
-	// Non-mux runner: parse for --help handling only.
-	argv := getState(call.ctx).argv
-	_, err := parseInput(nil, nil, argv, false)
-	if err != nil {
-		if errors.Is(err, errFlagHelp) {
-			return resolveHelpFunc(program.HelpFunc)(out.Stderr, &Help{
-				Name:        lastPathSegment(fullPath),
-				FullPath:    fullPath,
-				Usage:       program.Usage,
-				Description: program.Description,
-			})
-		}
-		return Errorf(ExitUsage, "%s: %w", fullPath, err)
-	}
-
-	newCall := &Call{
-		ctx:   call.ctx,
-		Stdin: call.Stdin,
-		Env:   call.Env,
-	}
-	return runner.RunCLI(out, newCall)
-}

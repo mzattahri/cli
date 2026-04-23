@@ -5,6 +5,18 @@
 // A [Call] holds the parsed input for a single invocation. A [Program]
 // binds a root runner to the process environment.
 //
+// # Extension model
+//
+// The dispatch pipeline is interface-driven. Every extension point is
+// a single-method interface; [*Mux] and [*Command] implement all four.
+// Third-party types participate by implementing whichever interfaces
+// they need.
+//
+//   - [Runner]    — required. Handles an invocation.
+//   - [Helper]    — optional. Contributes [Help] metadata to [Program.Walk].
+//   - [Walker]    — optional. Enumerates a subtree for [Program.Walk].
+//   - [Completer] — optional. Emits tab completions.
+//
 // # Inputs
 //
 // Flags are boolean values set by presence. Options carry string
@@ -12,16 +24,14 @@
 // ordered. All values are strings.
 //
 // Flags and options appear before positional arguments; parsing stops
-// at the first non-flag token or after "--".
-//
-// Required inputs are declared as positional arguments.
+// at the first non-flag token or after "--". Required inputs are
+// declared as positional arguments.
 //
 // Flags and options declared on a [Mux] are parsed before subcommand
 // routing and cascade into every runner mounted beneath it. Parsed
 // values accumulate in [Call.Flags] and [Call.Options]; defaults from
-// each routing level are applied during dispatch. [FlagSet.Explicit]
-// and [OptionSet.Explicit] distinguish command-line input from
-// defaults.
+// each routing level are applied during dispatch. [FlagSet.Lookup] and
+// [OptionSet.Lookup] distinguish caller-set values from defaults.
 //
 // # Middleware
 //
@@ -39,11 +49,12 @@
 // # Introspection
 //
 // [Program.Walk] returns an iterator over every command reachable
-// from the root runner. Walk visits nodes depth-first, sorted
-// alphabetically at each level. Each iteration yields the full
-// command path and a [Help] value describing that node's flags,
-// options, positional arguments, and subcommands. Flags and options
-// from ancestor routing levels are included and marked Global.
+// from the root runner; external dispatchers participate by
+// implementing [Walker]. [Mux.Match] returns the [Runner] that would
+// handle a given token sequence along with its full command path, the
+// analog of [net/http.ServeMux.Handler]. Both are read-only reverse
+// lookups suitable for generating documentation, man pages, or shell
+// integration scripts.
 //
 // # Testing
 //

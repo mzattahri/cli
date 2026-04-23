@@ -30,14 +30,14 @@ func (w *TokenWriter) WriteToken(value, desc string) (int, error) {
 // completes subcommands and mux-level flags; a Command completes
 // command-level flags and options.
 type Completer interface {
-	Complete(w *TokenWriter, completed []string, partial string) error
+	CompleteCLI(w *TokenWriter, completed []string, partial string) error
 }
 
 // CompleterFunc adapts a plain function to the [Completer] interface.
 type CompleterFunc func(w *TokenWriter, completed []string, partial string) error
 
-// Complete calls f(w, completed, partial).
-func (f CompleterFunc) Complete(w *TokenWriter, completed []string, partial string) error {
+// CompleteCLI calls f(w, completed, partial).
+func (f CompleterFunc) CompleteCLI(w *TokenWriter, completed []string, partial string) error {
 	return f(w, completed, partial)
 }
 
@@ -65,20 +65,20 @@ func CompletionRunner(c Completer) Runner {
 				partial = args[len(args)-1]
 			}
 			tw := &TokenWriter{Writer: out.Stdout}
-			return c.Complete(tw, completed, partial)
+			return c.CompleteCLI(tw, completed, partial)
 		},
 	}
 }
 
-// Complete writes tab-completion candidates for the given command line
-// tokens to w, implementing the [Completer] interface.
+// CompleteCLI writes tab-completion candidates for the given command
+// line tokens to w, implementing the [Completer] interface.
 //
 // The trie walk matches completed tokens against registered subcommands.
 // When a child node implements [Completer] (a mounted [*Mux] or a
-// [*Command]), the remaining tokens are delegated to that node's Complete
-// method. Otherwise, the mux completes its own subcommands and
-// mux-level flags.
-func (m *Mux) Complete(w *TokenWriter, completed []string, partial string) error {
+// [*Command]), the remaining tokens are delegated to that node's
+// CompleteCLI method. Otherwise, the mux completes its own subcommands
+// and mux-level flags.
+func (m *Mux) CompleteCLI(w *TokenWriter, completed []string, partial string) error {
 	n := &m.root
 	skipNext := false
 	for i, tok := range completed {
@@ -100,11 +100,8 @@ func (m *Mux) Complete(w *TokenWriter, completed []string, partial string) error
 			break
 		}
 		n = child
-		if n.command != nil {
-			return n.command.Complete(w, completed[i+1:], partial)
-		}
 		if completer, ok := n.commandRunner().(Completer); ok {
-			return completer.Complete(w, completed[i+1:], partial)
+			return completer.CompleteCLI(w, completed[i+1:], partial)
 		}
 	}
 
@@ -127,10 +124,10 @@ func (m *Mux) Complete(w *TokenWriter, completed []string, partial string) error
 	return writeSubcommands(w, n, partial)
 }
 
-// Complete writes tab-completion candidates for command-level flags and
-// options to w, implementing the [Completer] interface.
+// CompleteCLI writes tab-completion candidates for command-level
+// flags and options to w, implementing the [Completer] interface.
 //
-// At option value position, Complete delegates to [Command.Completer]
+// At option value position, CompleteCLI delegates to [Command.Completer]
 // (if set) instead of emitting flag or argument completions. Two
 // invocation shapes reach the completer:
 //
@@ -143,26 +140,26 @@ func (m *Mux) Complete(w *TokenWriter, completed []string, partial string) error
 //
 // When no [Command.Completer] is set, value position yields no
 // completions.
-func (c *Command) Complete(w *TokenWriter, completed []string, partial string) error {
+func (c *Command) CompleteCLI(w *TokenWriter, completed []string, partial string) error {
 	if slices.Contains(completed, "--") {
 		return nil
 	}
 	if len(completed) > 0 && isValueOption(completed[len(completed)-1], c.options.specs) {
 		if c.Completer != nil {
-			return c.Completer.Complete(w, completed, partial)
+			return c.Completer.CompleteCLI(w, completed, partial)
 		}
 		return nil
 	}
 	if name, value, ok := splitOptionValuePartial(partial, &c.flags, &c.options); ok {
 		if c.Completer != nil {
 			synth := append(slices.Clone(completed), "--"+name)
-			return c.Completer.Complete(w, synth, value)
+			return c.Completer.CompleteCLI(w, synth, value)
 		}
 		return nil
 	}
 
 	if c.Completer != nil {
-		if err := c.Completer.Complete(w, completed, partial); err != nil {
+		if err := c.Completer.CompleteCLI(w, completed, partial); err != nil {
 			return err
 		}
 	}

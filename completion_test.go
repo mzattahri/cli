@@ -40,7 +40,7 @@ func runComplete(t *testing.T, mux *Mux, tokens ...string) []string {
 		partial = tokens[len(tokens)-1]
 	}
 	tw := &TokenWriter{Writer: &buf}
-	mux.Complete(tw, completed, partial)
+	mux.CompleteCLI(tw, completed, partial)
 	out := buf.String()
 	if out == "" {
 		return nil
