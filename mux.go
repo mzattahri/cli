@@ -1,6 +1,7 @@
 package argv
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"iter"
@@ -11,16 +12,32 @@ import (
 
 // A Mux is a command multiplexer. It matches argv tokens against
 // registered command names and dispatches to the corresponding
-// [Runner]. The zero value is ready for use.
+// [Runner].
+//
+// The zero value is ready for use.
 type Mux struct {
 	// Description is the longer help text rendered by [HelpFunc]
 	// before the subcommand list.
 	Description string
 
+	// Hidden omits the mux from its parent's subcommand listing and
+	// from completion candidates. The mux remains routable: an
+	// explicit invocation routes through normally, and --help still
+	// renders.
+	Hidden bool
+
 	// NegateFlags enables --no- prefix negation for the boolean flags
 	// declared on this Mux. See [Command.NegateFlags] for parsing and
 	// per-level semantics.
 	NegateFlags bool
+
+	// Annotations carry per-node metadata copied into
+	// [Help.Annotations] by [Mux.HelpArgv].
+	//
+	// argv does not interpret the values. Use namespaced keys
+	// (e.g. "manpage/seealso") to avoid collisions across packages.
+	// Annotations do not propagate to descendants.
+	Annotations map[string]any
 
 	root    node
 	flags   flagSpecs
@@ -56,6 +73,9 @@ func (n *node) usageCommands(prefix string) []HelpCommand {
 	cmds := make([]HelpCommand, 0, len(names))
 	for _, name := range names {
 		child := n.children[name]
+		if child.hidden() {
+			continue
+		}
 		path := name
 		if prefix != "" {
 			path = prefix + " " + name
@@ -76,10 +96,22 @@ func (n *node) usage() string { return n.usageText }
 func (n *node) description() string {
 	if h, ok := n.runner.(Helper); ok {
 		var tmp Help
-		h.HelpCLI(&tmp)
+		h.HelpArgv(&tmp)
 		return tmp.Description
 	}
 	return ""
+}
+
+// hidden reports whether the runner declares itself hidden via
+// [Helper]. It reads the bit live so dynamic Helpers can toggle
+// visibility.
+func (n *node) hidden() bool {
+	if h, ok := n.runner.(Helper); ok {
+		var tmp Help
+		h.HelpArgv(&tmp)
+		return tmp.Hidden
+	}
+	return false
 }
 
 func validateRunner(runner Runner) {
@@ -153,7 +185,7 @@ func (m *Mux) Handle(pattern string, usage string, runner Runner) {
 		n = n.getOrCreate(seg)
 	}
 	if n.hasRunner() {
-		panic("argv: command conflict at " + `"` + pattern + `"`)
+		panic(fmt.Sprintf("argv: command conflict at %q", pattern))
 	}
 	m.checkRunnerShadow(pattern, runner)
 	n.setRunner(runner, usage)
@@ -161,18 +193,18 @@ func (m *Mux) Handle(pattern string, usage string, runner Runner) {
 
 func (m *Mux) checkDescendantShadow(name string) {
 	first := true
-	for help := range m.WalkCLI("", nil) {
+	for help := range m.WalkArgv("", nil) {
 		if first {
 			first = false
 			continue
 		}
 		for _, f := range help.Flags {
-			if !f.Global && f.Name == name {
+			if !f.Inherited && f.Name == name {
 				panic(fmt.Sprintf("argv: mux input %q shadows local input at %q", name, help.FullPath))
 			}
 		}
 		for _, o := range help.Options {
-			if !o.Global && o.Name == name {
+			if !o.Inherited && o.Name == name {
 				panic(fmt.Sprintf("argv: mux input %q shadows local input at %q", name, help.FullPath))
 			}
 		}
@@ -187,25 +219,25 @@ func (m *Mux) checkRunnerShadow(pattern string, runner Runner) {
 	}
 	emit := func(path string, flags []HelpFlag, options []HelpOption) {
 		for _, f := range flags {
-			if !f.Global {
+			if !f.Inherited {
 				assert(path, f.Name)
 			}
 		}
 		for _, o := range options {
-			if !o.Global {
+			if !o.Inherited {
 				assert(path, o.Name)
 			}
 		}
 	}
 	if w, ok := runner.(Walker); ok {
-		for help := range w.WalkCLI(pattern, nil) {
+		for help := range w.WalkArgv(pattern, nil) {
 			emit(help.FullPath, help.Flags, help.Options)
 		}
 		return
 	}
 	if h, ok := runner.(Helper); ok {
 		var help Help
-		h.HelpCLI(&help)
+		h.HelpArgv(&help)
 		emit(pattern, help.Flags, help.Options)
 	}
 }
@@ -235,11 +267,13 @@ func (m *Mux) Match(tokens []string) (Runner, string) {
 	return n.commandRunner(), path
 }
 
-// HelpCLI contributes the mux's Description, mux-level Flags and
-// Options, and subcommand list to h. Flags and Options are appended so
-// ancestor globals set by the dispatcher are preserved; Commands is
-// only filled when empty, so dispatcher pre-population wins.
-func (m *Mux) HelpCLI(h *Help) {
+// HelpArgv contributes the mux's Description, mux-level Flags and
+// Options, Hidden state, and subcommand list to h.
+//
+// Flags and Options are appended so ancestor globals set by the
+// dispatcher are preserved. Commands is only filled when empty, so
+// dispatcher pre-population wins.
+func (m *Mux) HelpArgv(h *Help) {
 	if h.Description == "" {
 		h.Description = m.Description
 	}
@@ -248,13 +282,15 @@ func (m *Mux) HelpCLI(h *Help) {
 	if len(h.Commands) == 0 {
 		h.Commands = m.root.usageCommands("")
 	}
+	h.Hidden = m.Hidden
+	h.Annotations = maps.Clone(m.Annotations)
 }
 
-// WalkCLI yields (help, runner) for the Mux and every command
+// WalkArgv yields (help, runner) for the Mux and every command
 // reachable from its trie. The Mux extends base.Flags and
 // base.Options with its own flags and options before yielding its
 // children.
-func (m *Mux) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner] {
+func (m *Mux) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner] {
 	return func(yield func(*Help, Runner) bool) {
 		if base == nil {
 			base = &Help{}
@@ -263,32 +299,34 @@ func (m *Mux) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner] {
 		ownFlags := muxFlags.helpEntriesNegatable(m.NegateFlags)
 		ownOptions := muxOptions.helpEntries()
 
-		// Help at this level: ancestors (already Global=true) + own (Global=false).
+		// Help at this level: ancestors (already Inherited=true) + own (Inherited=false).
 		help := &Help{
 			Name:        lastPathSegment(path),
 			FullPath:    path,
 			Usage:       base.Usage,
-			Description: firstNonEmpty(base.Description, m.Description),
+			Description: cmp.Or(base.Description, m.Description),
 			Commands:    m.root.usageCommands(""),
 			Flags:       slices.Concat(base.Flags, ownFlags),
 			Options:     slices.Concat(base.Options, ownOptions),
+			Hidden:      m.Hidden,
+			Annotations: maps.Clone(m.Annotations),
 		}
 		if !yield(help, m) {
 			return
 		}
 
 		// Children see everything visible here as globals.
-		globalFlags, globalOptions := accumulateHelp(base.Flags, base.Options, muxFlags, muxOptions, m.NegateFlags)
-		walkChildren(&m.root, path, globalFlags, globalOptions, yield)
+		inheritedFlags, inheritedOptions := accumulateHelp(base.Flags, base.Options, muxFlags, muxOptions, m.NegateFlags)
+		walkChildren(&m.root, path, inheritedFlags, inheritedOptions, yield)
 	}
 }
 
-// RunCLI routes the call's argv through the command trie and
+// RunArgv routes the call's argv through the command trie and
 // dispatches to the matched handler. --help or -h at the mux level
 // returns a [*HelpError]; unknown or partial paths likewise return a
 // HelpError so [Program.Invoke] can render help. It panics if call
 // is nil.
-func (m *Mux) RunCLI(out *Output, call *Call) error {
+func (m *Mux) RunArgv(out *Output, call *Call) error {
 	if call == nil {
 		panic("argv: nil call")
 	}
@@ -327,7 +365,7 @@ func (m *Mux) route(out *Output, call *Call, n *node, tokens []string, path stri
 		return he
 	}
 
-	return n.commandRunner().RunCLI(out, call.WithArgv(path, tokens[pos:]))
+	return n.commandRunner().RunArgv(out, call.WithArgv(path, tokens[pos:]))
 }
 
 // accumulateHelp merges ancestor help entries with the current mux's
@@ -335,11 +373,11 @@ func (m *Mux) route(out *Output, call *Call, n *node, tokens []string, path stri
 func accumulateHelp(ancestorFlags []HelpFlag, ancestorOptions []HelpOption, fs *flagSpecs, os *optionSpecs, negateFlags bool) ([]HelpFlag, []HelpOption) {
 	flags := slices.Concat(ancestorFlags, fs.helpEntriesNegatable(negateFlags))
 	for i := range flags {
-		flags[i].Global = true
+		flags[i].Inherited = true
 	}
 	options := slices.Concat(ancestorOptions, os.helpEntries())
 	for i := range options {
-		options[i].Global = true
+		options[i].Inherited = true
 	}
 	return flags, options
 }
@@ -371,9 +409,8 @@ func joinedPath(base string, suffix string) string {
 }
 
 func lastPathSegment(path string) string {
-	if path == "" {
-		return ""
+	if i := strings.LastIndex(path, " "); i >= 0 {
+		return path[i+1:]
 	}
-	parts := strings.Fields(path)
-	return parts[len(parts)-1]
+	return path
 }

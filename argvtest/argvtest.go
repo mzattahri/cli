@@ -3,6 +3,10 @@ package argvtest
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"iter"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,10 +21,15 @@ import (
 // The call uses [context.TODO]. Set Stdin on the returned Call for
 // stdin-dependent tests. NewCall panics on an unclosed quote.
 //
-// Use [NewCallArgs] when tokens are already split — for example, when
+// Use [NewCallArgs] when tokens are already split, for example when
 // forwarding a slice through a table-driven test.
 func NewCall(args string) *argv.Call {
-	return argv.NewCall(context.TODO(), tokenize(args))
+	tk := NewTokenizer(args)
+	tokens := slices.Collect(tk.Tokens())
+	if err := tk.Err(); err != nil {
+		panic(fmt.Sprintf("argvtest: %s in %s", err, strconv.Quote(args)))
+	}
+	return argv.NewCall(context.TODO(), tokens)
 }
 
 // NewCallArgs returns a [*argv.Call] from a pre-tokenized slice. Use
@@ -32,55 +41,6 @@ func NewCall(args string) *argv.Call {
 // stdin-dependent tests.
 func NewCallArgs(args []string) *argv.Call {
 	return argv.NewCall(context.TODO(), args)
-}
-
-// tokenize splits a shell-style argument string into argv tokens.
-func tokenize(s string) []string {
-	var tokens []string
-	var cur strings.Builder
-	inToken := false
-	quote := byte(0)
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if quote != 0 {
-			if c == quote {
-				quote = 0
-				continue
-			}
-			if quote == '"' && c == '\\' && i+1 < len(s) {
-				next := s[i+1]
-				if next == '"' || next == '\\' {
-					cur.WriteByte(next)
-					i++
-					continue
-				}
-			}
-			cur.WriteByte(c)
-			continue
-		}
-		if c == '"' || c == '\'' {
-			quote = c
-			inToken = true
-			continue
-		}
-		if c == ' ' || c == '\t' || c == '\n' {
-			if inToken {
-				tokens = append(tokens, cur.String())
-				cur.Reset()
-				inToken = false
-			}
-			continue
-		}
-		inToken = true
-		cur.WriteByte(c)
-	}
-	if quote != 0 {
-		panic("argvtest: unclosed quote in " + strconv.Quote(s))
-	}
-	if inToken {
-		tokens = append(tokens, cur.String())
-	}
-	return tokens
 }
 
 // NewLookupFunc returns an [argv.LookupFunc] backed by env, suitable
@@ -126,3 +86,95 @@ func (r *Recorder) Reset() {
 	r.stdout.Reset()
 	r.stderr.Reset()
 }
+
+// A Tokenizer splits a shell-style argument string into argv tokens.
+// Construct one with [NewTokenizer], then range over [Tokenizer.Tokens]:
+//
+//	for tok := range argvtest.NewTokenizer(`echo "hello world"`).Tokens() {
+//		fmt.Println(tok)
+//	}
+//
+// Tokens are separated by ASCII whitespace. Single quotes preserve
+// their contents literally. Double quotes preserve spaces and treat
+// \" and \\ as escapes; other backslashes are kept verbatim.
+type Tokenizer struct {
+	src     string
+	pos     int
+	current string
+	failure error
+}
+
+// NewTokenizer returns a tokenizer that scans src.
+func NewTokenizer(src string) *Tokenizer {
+	return &Tokenizer{src: src}
+}
+
+// Tokens returns an iterator over the argv tokens in the source.
+// Iteration stops at end of input or on error; check [Tokenizer.Err]
+// afterward to distinguish.
+func (t *Tokenizer) Tokens() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for t.scan() {
+			if !yield(t.token()) {
+				return
+			}
+		}
+	}
+}
+
+// scan advances to the next token, exposed via [Tokenizer.token]. It
+// returns false at EOF or on error; check [Tokenizer.err] to
+// distinguish.
+func (t *Tokenizer) scan() bool {
+	if t.failure != nil {
+		return false
+	}
+	for t.pos < len(t.src) && isTokenSpace(t.src[t.pos]) {
+		t.pos++
+	}
+	if t.pos >= len(t.src) {
+		return false
+	}
+
+	var b strings.Builder
+	quote := byte(0)
+loop:
+	for t.pos < len(t.src) {
+		c := t.src[t.pos]
+		switch {
+		case quote != 0 && c == quote:
+			quote = 0
+			t.pos++
+		case quote == '"' && c == '\\' && t.pos+1 < len(t.src) && (t.src[t.pos+1] == '"' || t.src[t.pos+1] == '\\'):
+			b.WriteByte(t.src[t.pos+1])
+			t.pos += 2
+		case quote != 0:
+			b.WriteByte(c)
+			t.pos++
+		case c == '"' || c == '\'':
+			quote = c
+			t.pos++
+		case isTokenSpace(c):
+			break loop
+		default:
+			b.WriteByte(c)
+			t.pos++
+		}
+	}
+
+	if quote != 0 {
+		t.failure = errors.New("unclosed quote")
+		return false
+	}
+	t.current = b.String()
+	return true
+}
+
+// token returns the most recent token produced by [Tokenizer.scan].
+func (t *Tokenizer) token() string { return t.current }
+
+// Err returns the first error encountered while scanning. EOF is not
+// an error; Err returns nil when iteration stops at end of input.
+func (t *Tokenizer) Err() error { return t.failure }
+
+func isTokenSpace(b byte) bool { return b == ' ' || b == '\t' || b == '\n' }

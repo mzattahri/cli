@@ -22,18 +22,25 @@ func (w *TokenWriter) WriteToken(value, desc string) (int, error) {
 }
 
 // A Completer writes tab completions for a partial command line to w.
-// It is the escape hatch for custom completion: a [Runner] that wants
-// dynamic option-value suggestions or context-dependent candidates
-// implements CompleteCLI. A Runner that does not implement Completer
-// still gets tab completion — candidates are derived from its Help
-// metadata by [CompletionCommand].
+// Implement Completer on a [Runner] to provide dynamic or
+// context-aware candidates.
+//
+// Most runners do not need a custom Completer. [*Help] implements
+// Completer, so any [Helper] is completed by [CompletionCommand] from
+// its Help metadata: subcommand names, flag and option tokens, and
+// argument placeholders. [*Mux] and [*Command] are Helpers, so they
+// get this for free.
+//
+// Implement Completer when those defaults are not enough — for
+// example, to suggest option values fetched from a service, or
+// candidates that depend on tokens already typed.
 //
 // completed holds the tokens before the cursor that have already been
 // fully typed. partial is the token currently being typed (it may be
 // empty).
 //
 // The idiomatic implementation embeds [*Command] for routing-level
-// behavior and overrides CompleteCLI to emit dynamic values for
+// behavior and overrides CompleteArgv to emit dynamic values for
 // specific option positions, falling back to the embedded Command's
 // Help for structural candidates:
 //
@@ -42,7 +49,7 @@ func (w *TokenWriter) WriteToken(value, desc string) (int, error) {
 //		hosts []string
 //	}
 //
-//	func (d *deployCmd) CompleteCLI(w *argv.TokenWriter, completed []string, partial string) error {
+//	func (d *deployCmd) CompleteArgv(w *argv.TokenWriter, completed []string, partial string) error {
 //		// Dynamic values at --host <TAB>.
 //		if len(completed) > 0 && completed[len(completed)-1] == "--host" {
 //			for _, h := range d.hosts {
@@ -52,12 +59,12 @@ func (w *TokenWriter) WriteToken(value, desc string) (int, error) {
 //			}
 //			return nil
 //		}
-//		// Delegate everything else to the embedded Command's Help —
+//		// Delegate everything else to the embedded Command's Help.
 //		// [*Help] also implements Completer and handles flag tokens,
 //		// option names, and argument hints.
 //		var help argv.Help
-//		d.HelpCLI(&help)
-//		return help.CompleteCLI(w, completed, partial)
+//		d.HelpArgv(&help)
+//		return help.CompleteArgv(w, completed, partial)
 //	}
 //
 // The pattern suits leaf commands. For subtree-shaped runners,
@@ -66,21 +73,26 @@ func (w *TokenWriter) WriteToken(value, desc string) (int, error) {
 //
 // See [ExampleCompleter] for a full runnable example.
 type Completer interface {
-	CompleteCLI(w *TokenWriter, completed []string, partial string) error
+	CompleteArgv(w *TokenWriter, completed []string, partial string) error
 }
 
 // CompleterFunc adapts a plain function to the [Completer] interface.
 type CompleterFunc func(w *TokenWriter, completed []string, partial string) error
 
-// CompleteCLI calls f(w, completed, partial).
-func (f CompleterFunc) CompleteCLI(w *TokenWriter, completed []string, partial string) error {
+// CompleteArgv calls f(w, completed, partial).
+func (f CompleterFunc) CompleteArgv(w *TokenWriter, completed []string, partial string) error {
 	return f(w, completed, partial)
 }
 
 // CompletionCommand returns a [*Command] that outputs tab completions
-// for root. The concrete return type lets callers inspect or augment
-// the command (set Description, add middleware, etc.) before mounting
-// it.
+// for root.
+//
+// The concrete return type lets callers inspect or augment the
+// command (set Description, override Run with middleware, etc.)
+// before mounting it. Two fields are load-bearing: [Command.Variadic]
+// must stay true so all shell tokens reach the handler, and
+// [Command.Hidden] defaults to true so the runner does not appear in
+// the parent's subcommand listing or completion output.
 //
 // Shell integration scripts invoke this command on each TAB press,
 // passing the current tokens (shell tokens) as positional arguments
@@ -94,9 +106,9 @@ func (f CompleterFunc) CompleteCLI(w *TokenWriter, completed []string, partial s
 //   - Otherwise, if root implements [Walker], the command walks the
 //     subtree to the deepest node matching the typed positional
 //     tokens. That node's [Completer] (if any) runs; otherwise
-//     candidates come from the node's [*Help.CompleteCLI].
+//     candidates come from the node's [*Help.CompleteArgv].
 //   - Otherwise, if root implements [Helper], the command materializes
-//     a [*Help] from it and delegates to [*Help.CompleteCLI]. No
+//     a [*Help] from it and delegates to [*Help.CompleteArgv]. No
 //     subcommand traversal.
 //
 // It panics if root is nil.
@@ -106,9 +118,10 @@ func CompletionCommand(root Runner) *Command {
 	}
 	return &Command{
 		Description: "Emit tab-completion candidates for the current shell tokens.",
-		CaptureRest: true,
+		Variadic: true,
+		Hidden:      true,
 		Run: func(out *Output, call *Call) error {
-			args := call.Rest
+			args := call.Tail
 			var completed []string
 			partial := ""
 			if len(args) > 0 {
@@ -125,15 +138,15 @@ func CompletionCommand(root Runner) *Command {
 // capabilities it implements.
 func walkComplete(root Runner, w *TokenWriter, completed []string, partial string) error {
 	if c, ok := root.(Completer); ok {
-		return c.CompleteCLI(w, completed, partial)
+		return c.CompleteArgv(w, completed, partial)
 	}
 	if walker, ok := root.(Walker); ok {
 		return walkerComplete(walker, w, completed, partial)
 	}
 	if h, ok := root.(Helper); ok {
 		var help Help
-		h.HelpCLI(&help)
-		return help.CompleteCLI(w, completed, partial)
+		h.HelpArgv(&help)
+		return help.CompleteArgv(w, completed, partial)
 	}
 	return nil
 }
@@ -154,7 +167,7 @@ func walkerComplete(walker Walker, w *TokenWriter, completed []string, partial s
 	byPath := map[string]*entry{}
 	var rootPath string
 	empty := true
-	for help, runner := range walker.WalkCLI("", nil) {
+	for help, runner := range walker.WalkArgv("", nil) {
 		if empty {
 			rootPath = help.FullPath
 			empty = false
@@ -195,10 +208,11 @@ func walkerComplete(walker Walker, w *TokenWriter, completed []string, partial s
 		lastSubcommandEnd = i
 	}
 
+	completed = completed[lastSubcommandEnd:]
 	if c, ok := current.runner.(Completer); ok {
-		return c.CompleteCLI(w, completed, partial)
+		return c.CompleteArgv(w, completed, partial)
 	}
-	return current.help.CompleteCLI(w, completed[lastSubcommandEnd:], partial)
+	return current.help.CompleteArgv(w, completed, partial)
 }
 
 // writeFlagEntries emits flag and option tokens derived from Help.
@@ -254,12 +268,9 @@ func writeSubcommands(w *TokenWriter, commands []HelpCommand, partial string) er
 // isValueOption reports whether word matches the long or short form
 // of any value-taking option in the given Help entries.
 func isValueOption(word string, options []HelpOption) bool {
-	for _, o := range options {
-		if word == "--"+o.Name || (o.Short != "" && word == "-"+o.Short) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(options, func(o HelpOption) bool {
+		return word == "--"+o.Name || (o.Short != "" && word == "-"+o.Short)
+	})
 }
 
 // isPartialOptionValue reports whether partial is a --option= prefix
@@ -282,15 +293,11 @@ func splitOptionValuePartial(partial string, flags []HelpFlag, options []HelpOpt
 	if !hasEquals {
 		return "", "", false
 	}
-	for _, f := range flags {
-		if f.Name == n {
-			return "", "", false
-		}
+	if slices.ContainsFunc(flags, func(f HelpFlag) bool { return f.Name == n }) {
+		return "", "", false
 	}
-	for _, o := range options {
-		if o.Name == n {
-			return n, v, true
-		}
+	if slices.ContainsFunc(options, func(o HelpOption) bool { return o.Name == n }) {
+		return n, v, true
 	}
 	return "", "", false
 }
@@ -301,31 +308,13 @@ func writeArgHint(w *TokenWriter, args []HelpArg, completed []string, options []
 	if len(args) == 0 {
 		return nil
 	}
-	// Count positional tokens already consumed (skip flags and option values).
-	pos := 0
-	skipNext := false
-	for _, tok := range completed {
-		if skipNext {
-			skipNext = false
-			continue
-		}
-		if tok == "--" {
-			break
-		}
-		if strings.HasPrefix(tok, "-") {
-			if isValueOption(tok, options) {
-				skipNext = true
-			}
-			continue
-		}
-		pos++
+	pos := positionalIndex(completed, options)
+	if pos < 0 || pos >= len(args) {
+		return nil
 	}
-	if pos < len(args) {
-		a := args[pos]
-		_, err := w.WriteToken(a.Name, a.Usage)
-		return err
-	}
-	return nil
+	a := args[pos]
+	_, err := w.WriteToken(a.Name, a.Usage)
+	return err
 }
 
 func writeEntry(w *TokenWriter, value, desc, partial string) error {

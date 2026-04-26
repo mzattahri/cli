@@ -16,7 +16,7 @@ type HelpFunc func(w io.Writer, help *Help) error
 // Help holds the data passed to a [HelpFunc] when rendering help
 // output. Dispatchers own Name, FullPath, Usage, and Commands; Runners
 // implementing [Helper] contribute Description, Flags, Options,
-// Arguments, and CaptureRest.
+// Arguments, and Variadic.
 type Help struct {
 	// Name is the final segment of the command path.
 	Name string
@@ -30,11 +30,11 @@ type Help struct {
 	// Description is longer free-form help text.
 	Description string
 
-	// Flags lists boolean flags. Entries with Global set were declared
+	// Flags lists boolean flags. Entries with Inherited set were declared
 	// on a parent [Mux]; the rest were declared on the [Command].
 	Flags []HelpFlag
 
-	// Options lists value options. Entries with Global set were declared
+	// Options lists value options. Entries with Inherited set were declared
 	// on a parent [Mux]; the rest were declared on the [Command].
 	Options []HelpOption
 
@@ -46,9 +46,22 @@ type Help struct {
 	// When a node has Commands, Arguments is empty.
 	Arguments []HelpArg
 
-	// CaptureRest indicates that the command accepts trailing
+	// Variadic indicates that the command accepts trailing
 	// arguments beyond those listed in Arguments.
-	CaptureRest bool
+	Variadic bool
+
+	// Hidden marks the command as omitted from its parent's subcommand
+	// listing and from completion candidates. The command remains
+	// routable and renders --help when reached directly.
+	Hidden bool
+
+	// Annotations carry per-node metadata for renderers, walkers, and
+	// other consumers. argv does not interpret the values.
+	//
+	// Use namespaced keys (e.g. "manpage/seealso") to avoid
+	// collisions across packages. Annotations do not propagate to or
+	// from ancestors.
+	Annotations map[string]any
 }
 
 // A HelpFlag describes a boolean flag in help output.
@@ -58,7 +71,7 @@ type HelpFlag struct {
 	Usage     string
 	Default   bool
 	Negatable bool
-	Global    bool
+	Inherited bool
 }
 
 // A HelpOption describes a value option in help output.
@@ -67,7 +80,7 @@ type HelpOption struct {
 	Short   string
 	Usage   string
 	Default string
-	Global  bool
+	Inherited bool
 }
 
 // A HelpCommand describes a subcommand in help output.
@@ -83,49 +96,89 @@ type HelpArg struct {
 	Usage string
 }
 
-// GlobalFlags returns an iterator over entries in h.Flags where
-// Global is true.
-func (h *Help) GlobalFlags() iter.Seq[HelpFlag] {
+// InheritedFlags returns an iterator over entries in h.Flags where
+// Inherited is true.
+func (h *Help) InheritedFlags() iter.Seq[HelpFlag] {
 	return filterHelpFlags(h.Flags, true)
 }
 
 // LocalFlags returns an iterator over entries in h.Flags where
-// Global is false.
+// Inherited is false.
 func (h *Help) LocalFlags() iter.Seq[HelpFlag] {
 	return filterHelpFlags(h.Flags, false)
 }
 
-// GlobalOptions returns an iterator over entries in h.Options where
-// Global is true.
-func (h *Help) GlobalOptions() iter.Seq[HelpOption] {
+// InheritedOptions returns an iterator over entries in h.Options where
+// Inherited is true.
+func (h *Help) InheritedOptions() iter.Seq[HelpOption] {
 	return filterHelpOptions(h.Options, true)
 }
 
 // LocalOptions returns an iterator over entries in h.Options where
-// Global is false.
+// Inherited is false.
 func (h *Help) LocalOptions() iter.Seq[HelpOption] {
 	return filterHelpOptions(h.Options, false)
 }
 
-// CompleteCLI emits default completion candidates derived from h:
+// PositionalIndex reports the index of the positional argument the
+// next non-flag token would fill, given the tokens already typed at
+// this command level. Flag tokens are skipped, and options declared
+// in h consume their value tokens. PositionalIndex returns -1 when
+// "--" appears in completed, since tokens past "--" are literal and
+// not subject to completion.
+//
+// Custom [Completer] implementations use PositionalIndex to dispatch
+// dynamic value suggestions for a specific positional argument:
+//
+//	if help.PositionalIndex(completed) == 0 {
+//		return suggestFiles(w, dir, partial)
+//	}
+//	return help.CompleteArgv(w, completed, partial)
+func (h *Help) PositionalIndex(completed []string) int {
+	return positionalIndex(completed, h.Options)
+}
+
+func positionalIndex(completed []string, options []HelpOption) int {
+	if slices.Contains(completed, "--") {
+		return -1
+	}
+	pos := 0
+	skipNext := false
+	for _, tok := range completed {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if strings.HasPrefix(tok, "-") {
+			if isValueOption(tok, options) {
+				skipNext = true
+			}
+			continue
+		}
+		pos++
+	}
+	return pos
+}
+
+// CompleteArgv emits default completion candidates derived from h:
 // subcommand names, flag and option tokens (with short forms and
 // negation variants), and argument placeholders. Flag and option
-// emission is scoped to entries declared at this level (Global=false);
+// emission is scoped to entries declared at this level (Inherited=false);
 // globals from ancestor levels are visible for flag-skip detection
 // but not emitted as candidates. Output is suppressed at option-value
 // position (where values aren't knowable from Help) and after "--".
 //
 // *Help implements [Completer] through this method: a [Runner] that
 // wants custom completion implements [Completer] itself and delegates
-// to help.CompleteCLI for the non-custom cases:
+// to help.CompleteArgv for the non-custom cases:
 //
-//	func (c *MyCmd) CompleteCLI(w *argv.TokenWriter, completed []string, partial string) error {
+//	func (c *MyCmd) CompleteArgv(w *argv.TokenWriter, completed []string, partial string) error {
 //		if ... { return c.emitCustomValues(w, partial) }
 //		var help argv.Help
-//		c.HelpCLI(&help)
-//		return help.CompleteCLI(w, completed, partial)
+//		c.HelpArgv(&help)
+//		return help.CompleteArgv(w, completed, partial)
 //	}
-func (h *Help) CompleteCLI(w *TokenWriter, completed []string, partial string) error {
+func (h *Help) CompleteArgv(w *TokenWriter, completed []string, partial string) error {
 	if slices.Contains(completed, "--") {
 		return nil
 	}
@@ -147,7 +200,7 @@ func (h *Help) CompleteCLI(w *TokenWriter, completed []string, partial string) e
 func filterHelpFlags(flags []HelpFlag, global bool) iter.Seq[HelpFlag] {
 	return func(yield func(HelpFlag) bool) {
 		for _, f := range flags {
-			if f.Global != global {
+			if f.Inherited != global {
 				continue
 			}
 			if !yield(f) {
@@ -160,7 +213,7 @@ func filterHelpFlags(flags []HelpFlag, global bool) iter.Seq[HelpFlag] {
 func filterHelpOptions(options []HelpOption, global bool) iter.Seq[HelpOption] {
 	return func(yield func(HelpOption) bool) {
 		for _, o := range options {
-			if o.Global != global {
+			if o.Inherited != global {
 				continue
 			}
 			if !yield(o) {
@@ -205,7 +258,7 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 	if len(help.Arguments) > 0 {
 		line += " [arguments]"
 	}
-	if help.CaptureRest {
+	if help.Variadic {
 		line += " [args...]"
 	}
 	line += "\n"
@@ -213,10 +266,10 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		return err
 	}
 
-	if err := renderFlagSection(w, "Global Flags", help.GlobalFlags()); err != nil {
+	if err := renderFlagSection(w, "Inherited Flags", help.InheritedFlags()); err != nil {
 		return err
 	}
-	if err := renderOptionSection(w, "Global Options", help.GlobalOptions()); err != nil {
+	if err := renderOptionSection(w, "Inherited Options", help.InheritedOptions()); err != nil {
 		return err
 	}
 	if err := renderFlagSection(w, "Flags", help.LocalFlags()); err != nil {
@@ -253,7 +306,7 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		if _, err := io.WriteString(w, "\n"); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "Use %q for more information.\n", help.FullPath+" [command] --help"); err != nil {
+		if _, err := fmt.Fprintf(w, "Use `%s [command] --help` for more information.\n", help.FullPath); err != nil {
 			return err
 		}
 	}

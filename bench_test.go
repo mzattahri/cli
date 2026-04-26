@@ -39,7 +39,7 @@ func BenchmarkProgramInvokeLeaf(b *testing.B) {
 	}
 }
 
-func BenchmarkMuxRunCLILeaf(b *testing.B) {
+func BenchmarkMuxRunArgvLeaf(b *testing.B) {
 	mux := benchMuxFixture()
 	out := &Output{Stdout: io.Discard, Stderr: io.Discard}
 	argv := []string{"--verbose", "--config", "prod.toml", "repo", "--path", "/tmp", "init", "--force", "--message", "hi", "production"}
@@ -49,7 +49,7 @@ func BenchmarkMuxRunCLILeaf(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		call := NewCall(ctx, argv)
-		_ = mux.RunCLI(out, call)
+		_ = mux.RunArgv(out, call)
 	}
 }
 
@@ -70,7 +70,7 @@ func BenchmarkParseInput(b *testing.B) {
 	}
 }
 
-func BenchmarkMuxRunCLISimple(b *testing.B) {
+func BenchmarkMuxRunArgvSimple(b *testing.B) {
 	mux := &Mux{}
 	cmd := &Command{
 		Run: func(*Output, *Call) error { return nil },
@@ -86,6 +86,6 @@ func BenchmarkMuxRunCLISimple(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = mux.RunCLI(out, NewCall(ctx, argv))
+		_ = mux.RunArgv(out, NewCall(ctx, argv))
 	}
 }

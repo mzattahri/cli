@@ -16,9 +16,9 @@ import (
 func TestCallCapturesStdout(t *testing.T) {
 	mux := &argv.Mux{}
 	cmd := &argv.Command{
-		CaptureRest: true,
+		Variadic: true,
 		Run: func(out *argv.Output, call *argv.Call) error {
-			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Rest, ","))
+			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Tail, ","))
 			return err
 		},
 	}
@@ -26,7 +26,7 @@ func TestCallCapturesStdout(t *testing.T) {
 
 	recorder := argvtest.NewRecorder()
 	call := argvtest.NewCall("echo a b")
-	err := mux.RunCLI(recorder.Output(), call)
+	err := mux.RunArgv(recorder.Output(), call)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestCallPassesStdin(t *testing.T) {
 	recorder := argvtest.NewRecorder()
 	call := argvtest.NewCall("cat")
 	call.Stdin = bytes.NewReader([]byte("piped input"))
-	err := mux.RunCLI(recorder.Output(), call)
+	err := mux.RunArgv(recorder.Output(), call)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestWrappedUsageIsHelp(t *testing.T) {
 	})
 
 	recorder := argvtest.NewRecorder()
-	err := runner.RunCLI(recorder.Output(), argvtest.NewCall(""))
+	err := runner.RunArgv(recorder.Output(), argvtest.NewCall(""))
 	if !errors.Is(err, argv.ErrHelp) {
 		t.Fatalf("got err=%v, want wrapped ErrHelp", err)
 	}
@@ -99,7 +99,7 @@ func TestDefaultErrorsAreReturned(t *testing.T) {
 	}))
 
 	recorder := argvtest.NewRecorder()
-	err := mux.RunCLI(recorder.Output(), argvtest.NewCall("fail"))
+	err := mux.RunArgv(recorder.Output(), argvtest.NewCall("fail"))
 	if err == nil || err.Error() != "boom" {
 		t.Fatalf("got err=%v, want %q", err, "boom")
 	}
@@ -115,7 +115,7 @@ func TestExitErrorsAreReturned(t *testing.T) {
 	}))
 
 	recorder := argvtest.NewRecorder()
-	err := mux.RunCLI(recorder.Output(), argvtest.NewCall("fail"))
+	err := mux.RunArgv(recorder.Output(), argvtest.NewCall("fail"))
 	var exitErr *argv.ExitError
 	if !errors.As(err, &exitErr) || exitErr.Code != 9 || exitErr.Err.Error() != "denied" {
 		t.Fatalf("got err=%v, want ExitError(code=9, err=denied)", err)
@@ -190,7 +190,7 @@ func TestNewCallQuoting(t *testing.T) {
 }
 
 func TestNewCallArgs(t *testing.T) {
-	// Pre-tokenized — no shell parsing, values with internal whitespace
+	// Pre-tokenized; no shell parsing, values with internal whitespace
 	// arrive verbatim.
 	call := argvtest.NewCallArgs([]string{"echo", "hello world", "--flag"})
 	if got := call.Argv(); len(got) != 3 || got[0] != "echo" || got[1] != "hello world" || got[2] != "--flag" {

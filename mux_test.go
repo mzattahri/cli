@@ -143,12 +143,12 @@ func TestPositionalArgsAreStrings(t *testing.T) {
 	}
 }
 
-func TestCaptureRestPreservesTrailingArgs(t *testing.T) {
+func TestVariadicPreservesTrailingArgs(t *testing.T) {
 	mux := &Mux{}
 	cmd := &Command{
-		CaptureRest: true,
+		Variadic: true,
 		Run: func(out *Output, call *Call) error {
-			_, err := fmt.Fprintf(out.Stdout, "%v", call.Rest)
+			_, err := fmt.Fprintf(out.Stdout, "%v", call.Tail)
 			return err
 		},
 	}
@@ -182,12 +182,12 @@ func TestDoubleDashCanBePositionalArgument(t *testing.T) {
 	}
 }
 
-func TestCaptureRestPreservesLiteralDoubleDash(t *testing.T) {
+func TestVariadicPreservesLiteralDoubleDash(t *testing.T) {
 	mux := &Mux{}
 	cmd := &Command{
-		CaptureRest: true,
+		Variadic: true,
 		Run: func(out *Output, call *Call) error {
-			_, err := fmt.Fprintf(out.Stdout, "value=%q rest=%q", call.Args.Get("value"), call.Rest)
+			_, err := fmt.Fprintf(out.Stdout, "value=%q tail=%q", call.Args.Get("value"), call.Tail)
 			return err
 		},
 	}
@@ -198,12 +198,12 @@ func TestCaptureRestPreservesLiteralDoubleDash(t *testing.T) {
 	if err := runMux(context.Background(), mux, &out, io.Discard, []string{"echo", "--", "--", "tail"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := out.String(); got != `value="--" rest=["tail"]` {
+	if got := out.String(); got != `value="--" tail=["tail"]` {
 		t.Fatalf("got %q", got)
 	}
 }
 
-func TestProgramGlobalFlagsAndOptions(t *testing.T) {
+func TestProgramInheritedFlagsAndOptions(t *testing.T) {
 	mux := &Mux{}
 	mux.Option("host", "", "", "daemon socket")
 	mux.Flag("verbose", "", false, "verbose")
@@ -249,13 +249,13 @@ func TestMountedMuxHelpIncludesProgramGlobals(t *testing.T) {
 	if gotHelp == nil {
 		t.Fatal("expected help to be rendered")
 	}
-	globalFlags := slices.Collect(gotHelp.GlobalFlags())
-	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
-		t.Fatalf("got global flags %#v", globalFlags)
+	inheritedFlags := slices.Collect(gotHelp.InheritedFlags())
+	if len(inheritedFlags) != 1 || inheritedFlags[0].Name != "verbose" {
+		t.Fatalf("got global flags %#v", inheritedFlags)
 	}
-	globalOptions := slices.Collect(gotHelp.GlobalOptions())
-	if len(globalOptions) != 1 || globalOptions[0].Name != "config" {
-		t.Fatalf("got global options %#v", globalOptions)
+	inheritedOptions := slices.Collect(gotHelp.InheritedOptions())
+	if len(inheritedOptions) != 1 || inheritedOptions[0].Name != "config" {
+		t.Fatalf("got global options %#v", inheritedOptions)
 	}
 }
 
@@ -364,12 +364,199 @@ func TestHelpIncludesOptionsAndArgs(t *testing.T) {
 	}
 }
 
+func TestHiddenCommandOmittedFromParentHelp(t *testing.T) {
+	mux := &Mux{}
+	mux.Handle("ls", "List entries", RunnerFunc(func(out *Output, call *Call) error { return nil }))
+	mux.Handle("internal", "Internal tools", &Command{
+		Hidden: true,
+		Run:    func(out *Output, call *Call) error { return nil },
+	})
+
+	var stdout bytes.Buffer
+	if err := runMux(context.Background(), mux, &stdout, io.Discard, []string{"--help"}); err != nil {
+		t.Fatal(err)
+	}
+	help := stdout.String()
+	if !strings.Contains(help, "ls") {
+		t.Fatalf("expected ls in parent help:\n%s", help)
+	}
+	if strings.Contains(help, "internal") {
+		t.Fatalf("hidden command leaked into parent help:\n%s", help)
+	}
+}
+
+func TestHiddenCommandStillRoutable(t *testing.T) {
+	mux := &Mux{}
+	mux.Handle("internal", "Internal tools", &Command{
+		Hidden: true,
+		Run: func(out *Output, call *Call) error {
+			_, err := io.WriteString(out.Stdout, "ran")
+			return err
+		},
+	})
+
+	var out bytes.Buffer
+	if err := runMux(context.Background(), mux, &out, io.Discard, []string{"internal"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "ran" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestHiddenSubMuxOmittedFromParentHelp(t *testing.T) {
+	hiddenMux := &Mux{Hidden: true, Description: "internal subcommands"}
+	hiddenMux.Handle("dump", "Dump state", RunnerFunc(func(out *Output, call *Call) error { return nil }))
+
+	root := &Mux{}
+	root.Handle("ls", "List entries", RunnerFunc(func(out *Output, call *Call) error { return nil }))
+	root.Handle("internal", "Internal tools", hiddenMux)
+
+	var stdout bytes.Buffer
+	if err := runMux(context.Background(), root, &stdout, io.Discard, []string{"--help"}); err != nil {
+		t.Fatal(err)
+	}
+	help := stdout.String()
+	if !strings.Contains(help, "ls") {
+		t.Fatalf("expected ls in parent help:\n%s", help)
+	}
+	if strings.Contains(help, "internal") {
+		t.Fatalf("hidden sub-mux leaked into parent help:\n%s", help)
+	}
+}
+
+func TestHiddenViaCustomHelper(t *testing.T) {
+	// Custom Helper that sets Hidden directly. Verifies the framework
+	// honours any Helper that flips the bit, not only *Command.
+	helper := &annotatedHelper{description: "Hidden via Helper"}
+
+	root := &Mux{}
+	root.Handle("ls", "List entries", RunnerFunc(func(out *Output, call *Call) error { return nil }))
+	root.Handle("internal", "", helper)
+
+	var stdout bytes.Buffer
+	if err := runMux(context.Background(), root, &stdout, io.Discard, []string{"--help"}); err != nil {
+		t.Fatal(err)
+	}
+	help := stdout.String()
+	if !strings.Contains(help, "ls") {
+		t.Fatalf("expected ls in parent help:\n%s", help)
+	}
+	if strings.Contains(help, "internal") {
+		t.Fatalf("Helper-marked-hidden runner leaked into parent help:\n%s", help)
+	}
+}
+
+type annotatedHelper struct{ description string }
+
+func (h *annotatedHelper) RunArgv(*Output, *Call) error { return nil }
+func (h *annotatedHelper) HelpArgv(out *Help) {
+	out.Description = h.description
+	out.Hidden = true
+}
+
+func TestHiddenCommandRendersOwnHelp(t *testing.T) {
+	mux := &Mux{}
+	mux.Handle("internal", "Internal tools", &Command{
+		Hidden:      true,
+		Description: "Hidden but reachable",
+		Run:         func(out *Output, call *Call) error { return nil },
+	})
+
+	var stdout bytes.Buffer
+	if err := runMux(context.Background(), mux, &stdout, io.Discard, []string{"internal", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	help := stdout.String()
+	if !strings.Contains(help, "Hidden but reachable") {
+		t.Fatalf("expected hidden command's help to render:\n%s", help)
+	}
+}
+
+func TestCommandAnnotationsCopiedToHelp(t *testing.T) {
+	mux := &Mux{}
+	cmd := &Command{
+		Run: func(out *Output, call *Call) error { return nil },
+		Annotations: map[string]any{
+			"manpage.seealso": []string{"foo(1)", "bar(1)"},
+			"deprecated":      true,
+		},
+	}
+	mux.Handle("ship", "Ship", cmd)
+
+	var gotHelp *Help
+	program := &Program{
+		Stdout:   io.Discard,
+		Stderr:   io.Discard,
+		HelpFunc: func(_ io.Writer, h *Help) error { gotHelp = h; return nil },
+	}
+	if err := program.Invoke(context.Background(), mux, []string{"app", "ship", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	if gotHelp == nil {
+		t.Fatal("expected help to be rendered")
+	}
+	if refs, ok := gotHelp.Annotations["manpage.seealso"].([]string); !ok || len(refs) != 2 {
+		t.Fatalf("got annotations %#v", gotHelp.Annotations)
+	}
+	if dep, _ := gotHelp.Annotations["deprecated"].(bool); !dep {
+		t.Fatalf("got deprecated %#v", gotHelp.Annotations["deprecated"])
+	}
+}
+
+func TestMuxAnnotationsDoNotCascade(t *testing.T) {
+	root := &Mux{
+		Annotations: map[string]any{"category": "root"},
+	}
+	leaf := &Command{
+		Run: func(out *Output, call *Call) error { return nil },
+	}
+	root.Handle("ship", "Ship", leaf)
+
+	var gotHelp *Help
+	program := &Program{
+		Stdout:   io.Discard,
+		Stderr:   io.Discard,
+		HelpFunc: func(_ io.Writer, h *Help) error { gotHelp = h; return nil },
+	}
+	if err := program.Invoke(context.Background(), root, []string{"app", "ship", "--help"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := gotHelp.Annotations["category"]; present {
+		t.Fatalf("annotations leaked from parent: %#v", gotHelp.Annotations)
+	}
+}
+
+func TestMuxAnnotationsVisibleAtSelfYield(t *testing.T) {
+	root := &Mux{
+		Annotations: map[string]any{"category": "root", "version": 1},
+	}
+	root.Handle("ship", "Ship", RunnerFunc(func(*Output, *Call) error { return nil }))
+
+	var rootHelp *Help
+	for help := range (&Program{}).Walk("app", root) {
+		if help.FullPath == "app" {
+			rootHelp = help
+			break
+		}
+	}
+	if rootHelp == nil {
+		t.Fatal("expected root entry from Walk")
+	}
+	if cat, _ := rootHelp.Annotations["category"].(string); cat != "root" {
+		t.Fatalf("got annotations %#v", rootHelp.Annotations)
+	}
+	if v, _ := rootHelp.Annotations["version"].(int); v != 1 {
+		t.Fatalf("got version %#v", rootHelp.Annotations["version"])
+	}
+}
+
 func TestCommandRestHoldsUnparsedTokens(t *testing.T) {
 	mux := &Mux{}
 	cmd := &Command{
-		CaptureRest: true,
+		Variadic: true,
 		Run: func(out *Output, call *Call) error {
-			_, err := fmt.Fprintf(out.Stdout, "repo=%s rest=%v", call.Options.Get("repository"), call.Rest)
+			_, err := fmt.Fprintf(out.Stdout, "repo=%s tail=%v", call.Options.Get("repository"), call.Tail)
 			return err
 		},
 	}
@@ -380,7 +567,7 @@ func TestCommandRestHoldsUnparsedTokens(t *testing.T) {
 	if err := runMux(context.Background(), mux, &out, io.Discard, []string{"open", "--repository", "/tmp/repo", "README.md"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := out.String(); got != "repo=/tmp/repo rest=[README.md]" {
+	if got := out.String(); got != "repo=/tmp/repo tail=[README.md]" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -454,7 +641,7 @@ func TestMuxFlagsAreScopedToLevel(t *testing.T) {
 	}
 }
 
-func TestProgramMuxRootHandlerWithGlobalOptions(t *testing.T) {
+func TestProgramMuxRootHandlerWithInheritedOptions(t *testing.T) {
 	mux := &Mux{}
 	mux.Option("host", "", "", "daemon socket")
 	mux.Handle("", "Run the root command", RunnerFunc(func(out *Output, call *Call) error {
@@ -572,7 +759,7 @@ func TestMuxFlagAndOption(t *testing.T) {
 	}))
 	var out bytes.Buffer
 	call := NewCall(context.Background(), []string{"--host", "localhost", "--verbose", "run"})
-	if err := mux.RunCLI(&Output{Stdout: &out, Stderr: io.Discard}, call); err != nil {
+	if err := mux.RunArgv(&Output{Stdout: &out, Stderr: io.Discard}, call); err != nil {
 		t.Fatal(err)
 	}
 	if got := out.String(); got != "localhost|true" {
@@ -623,13 +810,13 @@ func TestMountedMuxHelpShowsAllAncestorFlags(t *testing.T) {
 		t.Fatal("expected help to be rendered")
 	}
 	// Should include both root mux flag and repo mux option.
-	globalFlags := slices.Collect(gotHelp.GlobalFlags())
-	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
-		t.Fatalf("got global flags %#v", globalFlags)
+	inheritedFlags := slices.Collect(gotHelp.InheritedFlags())
+	if len(inheritedFlags) != 1 || inheritedFlags[0].Name != "verbose" {
+		t.Fatalf("got global flags %#v", inheritedFlags)
 	}
-	globalOptions := slices.Collect(gotHelp.GlobalOptions())
-	if len(globalOptions) != 1 || globalOptions[0].Name != "repository" {
-		t.Fatalf("got global options %#v", globalOptions)
+	inheritedOptions := slices.Collect(gotHelp.InheritedOptions())
+	if len(inheritedOptions) != 1 || inheritedOptions[0].Name != "repository" {
+		t.Fatalf("got global options %#v", inheritedOptions)
 	}
 }
 
@@ -913,7 +1100,7 @@ func TestEnvMap(t *testing.T) {
 		call := NewCall(context.Background(), nil)
 
 		var out bytes.Buffer
-		err := mw(newEnvTestCommand()).RunCLI(&Output{Stdout: &out, Stderr: io.Discard}, call)
+		err := mw(newEnvTestCommand()).RunArgv(&Output{Stdout: &out, Stderr: io.Discard}, call)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -928,7 +1115,7 @@ func TestEnvMap(t *testing.T) {
 		call.Flags.Set("verbose", false)
 
 		var out bytes.Buffer
-		err := mw(newEnvTestCommand()).RunCLI(&Output{Stdout: &out, Stderr: io.Discard}, call)
+		err := mw(newEnvTestCommand()).RunArgv(&Output{Stdout: &out, Stderr: io.Discard}, call)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -984,7 +1171,7 @@ func TestEnvMapParsesBooleanValues(t *testing.T) {
 				mapLookup(map[string]string{"DEBUG": tc.val}),
 			)
 			call := NewCall(context.Background(), nil)
-			if err := mw(newDebugFlagCommand()).RunCLI(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
+			if err := mw(newDebugFlagCommand()).RunArgv(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
 				t.Fatal(err)
 			}
 			if got := call.Flags.Get("debug"); got != tc.want {
@@ -1001,11 +1188,11 @@ func TestEnvMapEmptyStringSkipsFlag(t *testing.T) {
 	)
 	call := NewCall(context.Background(), nil)
 
-	if err := mw(newDebugFlagCommand()).RunCLI(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
+	if err := mw(newDebugFlagCommand()).RunArgv(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
 		t.Fatal(err)
 	}
 	// The command declares debug with default=false, so after its
-	// RunCLI applies defaults the entry exists but is not explicit.
+	// RunArgv applies defaults the entry exists but is not explicit.
 	if _, ok := call.Flags.Lookup("debug"); ok {
 		t.Fatalf("empty env value should leave flag non-explicit, got Flags=%v", call.Flags)
 	}
@@ -1018,7 +1205,7 @@ func TestEnvMapInvalidBooleanReturnsError(t *testing.T) {
 	)
 	call := NewCall(context.Background(), nil)
 
-	err := mw(newDebugFlagCommand()).RunCLI(&Output{Stdout: io.Discard, Stderr: io.Discard}, call)
+	err := mw(newDebugFlagCommand()).RunArgv(&Output{Stdout: io.Discard, Stderr: io.Discard}, call)
 	if err == nil {
 		t.Fatal("expected error for unparseable boolean")
 	}
@@ -1077,7 +1264,7 @@ func TestMuxMatchRootHandler(t *testing.T) {
 func TestRoutingSharesCallState(t *testing.T) {
 	// Dispatch mutates the caller's Call in place: parsed flags and
 	// options are merged into the same maps, and handler mutations
-	// are visible after RunCLI returns. Callers that need isolation
+	// are visible after RunArgv returns. Callers that need isolation
 	// construct a fresh Call per invocation.
 	root := &Mux{}
 	root.Option("tag", "", "", "tag")
@@ -1092,7 +1279,7 @@ func TestRoutingSharesCallState(t *testing.T) {
 	call := NewCall(context.Background(), []string{"--tag", "original", "repo", "show"})
 
 	var out bytes.Buffer
-	if err := root.RunCLI(&Output{Stdout: &out, Stderr: io.Discard}, call); err != nil {
+	if err := root.RunArgv(&Output{Stdout: &out, Stderr: io.Discard}, call); err != nil {
 		t.Fatal(err)
 	}
 	if got := out.String(); got != "mutated" {

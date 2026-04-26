@@ -52,9 +52,9 @@ type Call struct {
 	// Args holds bound positional arguments.
 	Args ArgSet
 
-	// Rest holds trailing positional arguments when
-	// [Command.CaptureRest] is set.
-	Rest []string
+	// Tail holds trailing positional arguments when
+	// [Command.Variadic] is set.
+	Tail []string
 
 	// argNames preserves declared argument order for [Call.String].
 	argNames []string
@@ -91,6 +91,11 @@ func (c *Call) Argv() []string { return c.argv }
 // WithArgv returns a shallow copy of c with name as Pattern and
 // argv as the unconsumed token list. Dispatchers use it to hand off
 // to a nested runner.
+//
+// The copy shares Flags, Options, and Args map storage with the
+// receiver, which is intentional: parsed inputs cascade naturally
+// into nested runners. A child runner that mutates these maps
+// affects the parent's view.
 func (c *Call) WithArgv(name string, argv []string) *Call {
 	c2 := *c
 	c2.pattern = name
@@ -123,11 +128,12 @@ func (c *Call) Context() context.Context {
 // The output starts with [Call.Pattern] followed by parsed fields as
 // space-separated tokens in a stable format:
 //
-//	<pattern> flag:<name>=<bool> opt:<name>=<value> arg:<name>=<value> rest:<value>
+//	<pattern> flag:<name>=<bool> opt:<name>=<value> arg:<name>=<value> tail:<value>
 //
 // Flags and options are sorted by name. Arguments preserve declaration
-// order when available, otherwise they are sorted by name.
-// Values containing spaces or special characters are quoted.
+// order when available, otherwise they are sorted by name. Tail
+// tokens preserve insertion order (positional). Values containing
+// spaces or special characters are quoted.
 func (c *Call) String() string {
 	tokens := make([]string, 0)
 	if c.pattern != "" {
@@ -137,8 +143,8 @@ func (c *Call) String() string {
 	tokens = append(tokens, canonicalOptionTokens("opt", c.Options)...)
 	tokens = append(tokens, canonicalArgTokens(c.Args, c.argNames)...)
 
-	for _, token := range c.Rest {
-		tokens = append(tokens, "rest:"+quoteToken(token))
+	for _, token := range c.Tail {
+		tokens = append(tokens, "tail:"+quoteToken(token))
 	}
 	if len(tokens) == 0 {
 		return ""

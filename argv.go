@@ -19,6 +19,16 @@
 // Flags and options appear before positional arguments. Parsing
 // stops at the first non-flag token or after "--".
 //
+// Long options accept either "--name value" or "--name=value".
+// Short options require space-separated values: "-H localhost", not
+// "-Hlocalhost" or "-H=localhost". Short flags may be bundled
+// ("-vfx"); a value-taking short option must be the last in its
+// bundle.
+//
+// On the command line a flag value uses Go's [strconv.ParseBool]
+// format ("1", "0", "true", "false"). [EnvMiddleware] additionally
+// accepts shell and systemd conventions ("yes", "no", "on", "off").
+//
 // Flags and options declared on a [Mux] are parsed before subcommand
 // routing and cascade into every Runner mounted beneath it. Parsed
 // values accumulate in [Call.Flags] and [Call.Options]; defaults
@@ -42,22 +52,21 @@
 //
 // A [Middleware] is a function of type func([Runner]) [Runner].
 // Construct one with [NewMiddleware], which takes an "around" function
-// receiving the inner Runner, [Output], and [Call]:
+// mirroring [Runner.RunArgv] with a trailing next:
 //
-//	var WithAuth = argv.NewMiddleware(func(next argv.Runner, out *argv.Output, call *argv.Call) error {
+//	var WithAuth = argv.NewMiddleware(func(out *argv.Output, call *argv.Call, next argv.Runner) error {
 //		if err := checkAuth(call.Context()); err != nil {
 //			return err
 //		}
-//		return next.RunCLI(out, call)
+//		return next.RunArgv(out, call)
 //	})
 //
 //	mux.Handle("deploy", "Deploy", WithAuth(deployCmd))
 //
-// The Middleware produced by NewMiddleware preserves the inner
-// Runner's [Helper], [Walker], and [Completer] through type assertion:
-// help, subtree enumeration, and tab completion continue to work
-// across the wrap. Returning a bare [RunnerFunc] from a middleware
-// does not — it silently strips those interfaces.
+// The Middleware produced by NewMiddleware forwards [Helper], [Walker],
+// and [Completer] to the inner Runner, so help, subtree enumeration,
+// and tab completion survive the wrap. A middleware that returns a
+// bare [RunnerFunc] silently strips those interfaces.
 //
 // Compose middleware by nesting at the mount site; the outermost
 // wrapper is applied first. Middleware wraps the entire invocation,
@@ -113,6 +122,6 @@
 //
 //	recorder := argvtest.NewRecorder()
 //	call := argvtest.NewCall("greet gopher")
-//	err := mux.RunCLI(recorder.Output(), call)
+//	err := mux.RunArgv(recorder.Output(), call)
 //	// recorder.Stdout() == "hello gopher\n"
 package argv // import "mz.attahri.com/code/argv"

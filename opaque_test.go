@@ -13,11 +13,9 @@ import (
 	"mz.attahri.com/code/argv/argvtest"
 )
 
-// opaqueRepo is the test subject: a type whose only public behavior is
-// RunCLI. Internally it composes a *argv.Mux. The parent mux that mounts
-// it cannot see its subtree, its flags, or its descriptions — mirroring
-// how an http.Handler can wrap an http.ServeMux without the parent
-// mux knowing anything about the inner routes.
+// opaqueRepo composes a *argv.Mux but exposes only RunArgv. The parent
+// mux that mounts it cannot see its subtree, flags, or descriptions.
+// This mirrors http.Handler wrapping an http.ServeMux opaquely.
 type opaqueRepo struct {
 	inner *argv.Mux
 }
@@ -51,21 +49,21 @@ func newOpaqueRepo() *opaqueRepo {
 	return &opaqueRepo{inner: m}
 }
 
-// RunCLI is the ONE interface opaqueRepo implements. It is a pure Runner.
-func (r *opaqueRepo) RunCLI(out *argv.Output, call *argv.Call) error {
-	return r.inner.RunCLI(out, call)
+// RunArgv is the ONE interface opaqueRepo implements. It is a pure Runner.
+func (r *opaqueRepo) RunArgv(out *argv.Output, call *argv.Call) error {
+	return r.inner.RunArgv(out, call)
 }
 
 // Compile-time: opaqueRepo is exactly a Runner, nothing else.
 var _ argv.Runner = (*opaqueRepo)(nil)
 
-// transparentRepo embeds opaqueRepo and additionally implements Walker
-// by delegating to the inner mux. One method, one delegation — this is
-// the entire cost of opting into introspection.
+// transparentRepo embeds opaqueRepo and adds Walker by delegating to
+// the inner mux. One method is the entire cost of opting into
+// introspection.
 type transparentRepo struct{ *opaqueRepo }
 
-func (r *transparentRepo) WalkCLI(path string, base *argv.Help) iter.Seq2[*argv.Help, argv.Runner] {
-	return r.inner.WalkCLI(path, base)
+func (r *transparentRepo) WalkArgv(path string, base *argv.Help) iter.Seq2[*argv.Help, argv.Runner] {
+	return r.inner.WalkArgv(path, base)
 }
 
 var (
@@ -108,8 +106,8 @@ func newOuterTransparent() *argv.Mux {
 func TestOpaque_DispatchReachesInnerLeaf(t *testing.T) {
 	outer, _ := newOuter()
 	rec := argvtest.NewRecorder()
-	if err := outer.RunCLI(rec.Output(), argvtest.NewCall("repo init")); err != nil {
-		t.Fatalf("RunCLI: %v", err)
+	if err := outer.RunArgv(rec.Output(), argvtest.NewCall("repo init")); err != nil {
+		t.Fatalf("RunArgv: %v", err)
 	}
 	got := rec.Stdout()
 	if !strings.Contains(got, `pattern=repo init`) {
@@ -120,8 +118,8 @@ func TestOpaque_DispatchReachesInnerLeaf(t *testing.T) {
 func TestOpaque_GlobalFlagCascadesThroughOpaque(t *testing.T) {
 	outer, _ := newOuter()
 	rec := argvtest.NewRecorder()
-	if err := outer.RunCLI(rec.Output(), argvtest.NewCall("--verbose repo init")); err != nil {
-		t.Fatalf("RunCLI: %v", err)
+	if err := outer.RunArgv(rec.Output(), argvtest.NewCall("--verbose repo init")); err != nil {
+		t.Fatalf("RunArgv: %v", err)
 	}
 	got := rec.Stdout()
 	if !strings.Contains(got, "verbose=true") {
@@ -132,8 +130,8 @@ func TestOpaque_GlobalFlagCascadesThroughOpaque(t *testing.T) {
 func TestOpaque_InnerCommandFlagIsLocal(t *testing.T) {
 	outer, _ := newOuter()
 	rec := argvtest.NewRecorder()
-	if err := outer.RunCLI(rec.Output(), argvtest.NewCall("repo init --bare")); err != nil {
-		t.Fatalf("RunCLI: %v", err)
+	if err := outer.RunArgv(rec.Output(), argvtest.NewCall("repo init --bare")); err != nil {
+		t.Fatalf("RunArgv: %v", err)
 	}
 	got := rec.Stdout()
 	if !strings.Contains(got, "bare=true") {
@@ -144,7 +142,7 @@ func TestOpaque_InnerCommandFlagIsLocal(t *testing.T) {
 func TestOpaque_UnknownSubcommandBecomesHelpError(t *testing.T) {
 	outer, _ := newOuter()
 	rec := argvtest.NewRecorder()
-	err := outer.RunCLI(rec.Output(), argvtest.NewCall("repo frobnicate"))
+	err := outer.RunArgv(rec.Output(), argvtest.NewCall("repo frobnicate"))
 	if err == nil {
 		t.Fatalf("expected error for unknown inner subcommand")
 	}
@@ -187,7 +185,7 @@ func TestOpaque_ExplicitHelpPastOpaqueBoundary(t *testing.T) {
 	t.Logf("--- stdout ---\n%s", out)
 	t.Logf("--- stderr ---\n%s", stderr.String())
 
-	// Path is past the opaque boundary — the render should be minimal,
+	// Path is past the opaque boundary; the render should be minimal,
 	// not painted with outer-mux metadata.
 	if !strings.Contains(out, "app repo init") {
 		t.Errorf("minimal help should mention the requested path: %s", out)
@@ -226,8 +224,8 @@ func TestOpaque_CompletionAtTopLevelListsOpaque(t *testing.T) {
 	rec := argvtest.NewRecorder()
 	// User typed: `app complete -- <TAB>` → complete with empty partial.
 	call := argv.NewCall(context.Background(), []string{"complete", "--", ""})
-	if err := outer.RunCLI(rec.Output(), call); err != nil {
-		t.Fatalf("RunCLI: %v", err)
+	if err := outer.RunArgv(rec.Output(), call); err != nil {
+		t.Fatalf("RunArgv: %v", err)
 	}
 	got := rec.Stdout()
 	t.Logf("--- completions ---\n%s", got)
@@ -241,8 +239,8 @@ func TestOpaque_CompletionPastOpaqueBoundaryEmpty(t *testing.T) {
 	rec := argvtest.NewRecorder()
 	// User typed: `app complete -- repo <TAB>`
 	call := argv.NewCall(context.Background(), []string{"complete", "--", "repo", ""})
-	if err := outer.RunCLI(rec.Output(), call); err != nil {
-		t.Fatalf("RunCLI: %v", err)
+	if err := outer.RunArgv(rec.Output(), call); err != nil {
+		t.Fatalf("RunArgv: %v", err)
 	}
 	got := rec.Stdout()
 	t.Logf("--- completions after opaque boundary ---\n%q", got)
@@ -254,11 +252,8 @@ func TestOpaque_CompletionPastOpaqueBoundaryEmpty(t *testing.T) {
 
 // --- Transparent (Runner + Walker) variant ---------------------------------
 //
-// A sub-mux-style type that additionally implements Walker by delegating
-// to its inner *argv.Mux should behave indistinguishably from mounting
-// the inner mux directly. These tests verify the full net/http analogy:
-// Runner-only = opaque sub-handler (dispatch works, introspection doesn't);
-// Runner + Walker = "mountable mux" (full introspection).
+// Runner-only: opaque sub-handler (dispatch works, introspection doesn't).
+// Runner + Walker: mountable mux (full introspection).
 
 func TestTransparent_OuterHelpStillListsNode(t *testing.T) {
 	outer := newOuterTransparent()
@@ -319,8 +314,8 @@ func TestTransparent_CompletionDescendsIntoInnerSubtree(t *testing.T) {
 	rec := argvtest.NewRecorder()
 	// `app complete -- repo <TAB>`
 	call := argv.NewCall(context.Background(), []string{"complete", "--", "repo", ""})
-	if err := outer.RunCLI(rec.Output(), call); err != nil {
-		t.Fatalf("RunCLI: %v", err)
+	if err := outer.RunArgv(rec.Output(), call); err != nil {
+		t.Fatalf("RunArgv: %v", err)
 	}
 	got := rec.Stdout()
 	t.Logf("--- completions past transparent boundary ---\n%s", got)

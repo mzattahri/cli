@@ -5,10 +5,10 @@ Deploys the application to the given target.
 Usage:
   app deploy [options] [arguments] [args...]
 
-Global Flags:
+Inherited Flags:
   -v, --verbose  Verbose output
 
-Global Options:
+Inherited Options:
   -c, --config  Config file
 
 Flags:

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"maps"
 	"slices"
 )
 
@@ -24,16 +25,16 @@ type Flusher interface {
 }
 
 // A Runner handles a command invocation. A Runner should not retain
-// out or call after RunCLI returns.
+// out or call after RunArgv returns.
 type Runner interface {
-	RunCLI(out *Output, call *Call) error
+	RunArgv(out *Output, call *Call) error
 }
 
 // RunnerFunc adapts a function to the [Runner] interface.
 type RunnerFunc func(out *Output, call *Call) error
 
-// RunCLI calls f(out, call).
-func (f RunnerFunc) RunCLI(out *Output, call *Call) error { return f(out, call) }
+// RunArgv calls f(out, call).
+func (f RunnerFunc) RunArgv(out *Output, call *Call) error { return f(out, call) }
 
 // A Command parses command-level input and runs a handler. The zero
 // value is a valid empty command; Run must be set before invocation.
@@ -41,8 +42,13 @@ type Command struct {
 	// Description is the longer help text shown by [HelpFunc].
 	Description string
 
-	// CaptureRest preserves unmatched trailing positional arguments in [Call.Rest].
-	CaptureRest bool
+	// Variadic preserves unmatched trailing positional arguments in [Call.Tail].
+	Variadic bool
+
+	// Hidden omits the command from its parent's subcommand listing and
+	// from completion candidates. The command remains routable: an
+	// explicit invocation runs the handler, and --help still renders.
+	Hidden bool
 
 	// NegateFlags enables --no- prefix negation for the boolean flags
 	// declared on this Command. When set:
@@ -59,7 +65,7 @@ type Command struct {
 	// NegateFlags is scoped to this Command. It does not inherit from
 	// an enclosing Mux's NegateFlags, nor propagate to descendants.
 	// Each level parses the flags it declares and applies negation
-	// only when its own NegateFlags is set — so "app --no-verbose
+	// only when its own NegateFlags is set, so "app --no-verbose
 	// deploy --no-cache" requires the Mux that declared "verbose" to
 	// have NegateFlags set AND the Command that declared "cache" to
 	// have NegateFlags set independently.
@@ -67,6 +73,14 @@ type Command struct {
 
 	// Run handles the command invocation.
 	Run RunnerFunc
+
+	// Annotations carry per-node metadata copied into
+	// [Help.Annotations] by [Command.HelpArgv].
+	//
+	// argv does not interpret the values. Use namespaced keys
+	// (e.g. "manpage/seealso") to avoid collisions across packages.
+	// Annotations do not inherit from or propagate to ancestors.
+	Annotations map[string]any
 
 	flags   flagSpecs
 	options optionSpecs
@@ -95,12 +109,12 @@ func (c *Command) Arg(name, usage string) {
 	c.args.add(name, usage)
 }
 
-// RunCLI parses command-level inputs from the call's argv, binds
+// RunArgv parses command-level inputs from the call's argv, binds
 // positional arguments, applies defaults, and invokes Run. --help or
 // -h returns a [*HelpError] for the current path, which
 // [Program.Invoke] turns into rendered help. A parse error returns
 // an [*ExitError] with code [ExitUsage].
-func (c *Command) RunCLI(out *Output, call *Call) error {
+func (c *Command) RunArgv(out *Output, call *Call) error {
 	if c.Run == nil {
 		panic("argv: nil command handler")
 	}
@@ -115,30 +129,23 @@ func (c *Command) RunCLI(out *Output, call *Call) error {
 	}
 
 	var argState ArgSet
-	var restState []string
+	var tailState []string
 	if as != nil {
-		argState, restState, err = as.parse(parsed.args, c.CaptureRest)
+		argState, tailState, err = as.parse(parsed.args, c.Variadic)
 		if err != nil {
 			return Errorf(ExitUsage, "%s: %w", call.pattern, err)
 		}
-	} else if c.CaptureRest {
-		restState = slices.Clone(parsed.args)
+	} else if c.Variadic {
+		tailState = slices.Clone(parsed.args)
 	} else if len(parsed.args) > 0 {
 		return Errorf(ExitUsage, "%s: unexpected argument %q", call.pattern, parsed.args[0])
 	}
 
 	applyParse(call, parsed, fs, os)
 	call.Args = argState
-	call.Rest = restState
+	call.Tail = tailState
 	call.argNames = as.names()
 	return c.Run(out, call)
-}
-
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 func (c *Command) inputs() (*flagSpecs, *optionSpecs, *argSpecs) {
@@ -158,37 +165,43 @@ func (c *Command) inputs() (*flagSpecs, *optionSpecs, *argSpecs) {
 }
 
 // Helper is implemented by [Runner] types that contribute help
-// metadata. HelpCLI receives an [*Help] with routing-level fields
+// metadata. HelpArgv receives an [*Help] with routing-level fields
 // (Name, FullPath, Usage, Commands) pre-populated by the dispatcher
 // and fills in Description, Flags, Options, Arguments, and
-// CaptureRest. HelpCLI appends to Flags and Options rather than
+// Variadic. HelpArgv appends to Flags and Options rather than
 // replacing them so that ancestor globals are preserved.
 //
 // Implementations must not retain h past the call.
 type Helper interface {
 	Runner
-	HelpCLI(h *Help)
+	HelpArgv(h *Help)
 }
 
 // Walker is implemented by [Runner] types that expose a subtree of
-// commands. WalkCLI yields (help, runner) for itself and every
-// reachable descendant. help carries the accumulated [Help] for each
-// node — Name, FullPath, Usage, Description, cascaded global Flags
-// and Options, and Commands — so consumers never need to recompute
-// ancestor context. runner is the raw [Runner] at the node, exposed
-// so consumers can type-assert for [Completer] or other optional
-// interfaces.
+// commands. WalkArgv yields (help, runner) for itself and every
+// reachable descendant.
 //
-// base carries the ancestor-derived partial [Help] that this subtree
-// should build on. A nil base is equivalent to an empty one.
+// help carries the accumulated [Help] for each node (Name, FullPath,
+// Usage, Description, cascaded inherited Flags and Options, and
+// Commands), so consumers never need to recompute ancestor context.
+// runner is the raw [Runner] at the node, exposed so consumers can
+// type-assert for [Completer] or other optional interfaces. base
+// carries the ancestor-derived partial [Help] that this subtree
+// should build on; a nil base is equivalent to an empty one.
+//
+// Implementations must:
+//   - Yield a fresh *Help per node. Reusing pointers across yields
+//     breaks consumers that index by FullPath (e.g. completion).
+//   - Treat base as read-only. Clone base.Flags and base.Options
+//     before appending; do not mutate them in place.
 type Walker interface {
-	WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner]
+	WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner]
 }
 
-// HelpCLI contributes the command's declared Description, Flags,
-// Options, Arguments, and CaptureRest to h. It appends to h.Flags and
+// HelpArgv contributes the command's declared Description, Flags,
+// Options, Arguments, and Variadic to h. It appends to h.Flags and
 // h.Options so ancestor globals set by the dispatcher are preserved.
-func (c *Command) HelpCLI(h *Help) {
+func (c *Command) HelpArgv(h *Help) {
 	fs, os, as := c.inputs()
 	if h.Description == "" {
 		h.Description = c.Description
@@ -196,14 +209,16 @@ func (c *Command) HelpCLI(h *Help) {
 	h.Flags = append(h.Flags, fs.helpEntriesNegatable(c.NegateFlags)...)
 	h.Options = append(h.Options, os.helpEntries()...)
 	if as != nil {
-		h.Arguments = as.HelpArguments()
+		h.Arguments = as.helpArguments()
 	}
-	h.CaptureRest = c.CaptureRest
+	h.Variadic = c.Variadic
+	h.Hidden = c.Hidden
+	h.Annotations = maps.Clone(c.Annotations)
 }
 
-// WalkCLI yields a single (help, runner) entry for the command. It
+// WalkArgv yields a single (help, runner) entry for the command. It
 // merges ancestor globals from base with the command's own inputs.
-func (c *Command) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner] {
+func (c *Command) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner] {
 	return func(yield func(*Help, Runner) bool) {
 		h := &Help{
 			Name:     lastPathSegment(path),
@@ -215,7 +230,7 @@ func (c *Command) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner] {
 			h.Flags = slices.Clone(base.Flags)
 			h.Options = slices.Clone(base.Options)
 		}
-		c.HelpCLI(h)
+		c.HelpArgv(h)
 		yield(h, c)
 	}
 }
@@ -227,7 +242,7 @@ func (c *Command) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner] {
 //	func WithLogging(logger *slog.Logger) argv.Middleware { ... }
 //
 // A plain func([Runner]) [Runner] literal is assignable to Middleware
-// and vice versa — callers do not need explicit conversions.
+// and vice versa; callers do not need explicit conversions.
 type Middleware func(Runner) Runner
 
 // NewMiddleware returns a [Middleware] that wraps its input with
@@ -235,24 +250,14 @@ type Middleware func(Runner) Runner
 // [Helper], [Walker], and [Completer] to the inner Runner, so
 // introspection metadata survives the wrap.
 //
-// around receives the inner Runner along with the call's Output and
-// Call; invoke next.RunCLI to continue the chain, or return an error
-// to short-circuit.
-//
-//	var WithAuth = argv.NewMiddleware(func(next argv.Runner, out *argv.Output, call *argv.Call) error {
-//		if err := checkAuth(call.Context()); err != nil { return err }
-//		return next.RunCLI(out, call)
-//	})
-//
-// Compose middlewares by nesting at the mount site; the outermost
-// wrapper is applied first:
-//
-//	mux.Handle("deploy", "Deploy", WithAuth(WithLogging(deployCmd)))
+// around mirrors [Runner.RunArgv] with a trailing next; invoke
+// next.RunArgv to continue the chain, or return an error to
+// short-circuit. See the package overview for an example.
 //
 // The wrapper implements Helper, Walker, and Completer iff the wrapped
 // Runner does. Callers should not type-assert the wrapper; its
 // concrete type is unexported by design.
-func NewMiddleware(around func(next Runner, out *Output, call *Call) error) Middleware {
+func NewMiddleware(around func(out *Output, call *Call, next Runner) error) Middleware {
 	if around == nil {
 		panic("argv: nil around func")
 	}
@@ -263,7 +268,7 @@ func NewMiddleware(around func(next Runner, out *Output, call *Call) error) Midd
 		return &wrappedRunner{
 			inner: next,
 			run: func(out *Output, call *Call) error {
-				return around(next, out, call)
+				return around(out, call, next)
 			},
 		}
 	}
@@ -274,19 +279,19 @@ type wrappedRunner struct {
 	run   RunnerFunc
 }
 
-func (w *wrappedRunner) RunCLI(out *Output, call *Call) error {
+func (w *wrappedRunner) RunArgv(out *Output, call *Call) error {
 	return w.run(out, call)
 }
 
-func (w *wrappedRunner) HelpCLI(h *Help) {
+func (w *wrappedRunner) HelpArgv(h *Help) {
 	if inner, ok := w.inner.(Helper); ok {
-		inner.HelpCLI(h)
+		inner.HelpArgv(h)
 	}
 }
 
-func (w *wrappedRunner) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner] {
+func (w *wrappedRunner) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner] {
 	if inner, ok := w.inner.(Walker); ok {
-		return inner.WalkCLI(path, base)
+		return inner.WalkArgv(path, base)
 	}
 	return func(yield func(*Help, Runner) bool) {
 		h := &Help{Name: lastPathSegment(path), FullPath: path}
@@ -296,13 +301,16 @@ func (w *wrappedRunner) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner
 			h.Flags = slices.Clone(base.Flags)
 			h.Options = slices.Clone(base.Options)
 		}
+		if inner, ok := w.inner.(Helper); ok {
+			inner.HelpArgv(h)
+		}
 		yield(h, w)
 	}
 }
 
-func (w *wrappedRunner) CompleteCLI(tw *TokenWriter, completed []string, partial string) error {
+func (w *wrappedRunner) CompleteArgv(tw *TokenWriter, completed []string, partial string) error {
 	if inner, ok := w.inner.(Completer); ok {
-		return inner.CompleteCLI(tw, completed, partial)
+		return inner.CompleteArgv(tw, completed, partial)
 	}
 	return nil
 }

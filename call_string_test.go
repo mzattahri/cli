@@ -21,7 +21,7 @@ func TestCallStringCanonicalizesParsedCall(t *testing.T) {
 	mux.Option("config", "c", "", "config")
 
 	cmd := &Command{
-		CaptureRest: true,
+		Variadic: true,
 		Run: func(out *Output, call *Call) error {
 			_, err := out.Stdout.Write([]byte(call.String()))
 			return err
@@ -52,7 +52,7 @@ func TestCallStringCanonicalizesParsedCall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := `app deploy flag:cache=false flag:force=true flag:verbose=true opt:config=prod.toml opt:tag=b opt:tag=a arg:image=alpine arg:target=prod rest:tail rest:-f`
+	want := `app deploy flag:cache=false flag:force=true flag:verbose=true opt:config=prod.toml opt:tag=b opt:tag=a arg:image=alpine arg:target=prod tail:tail tail:-f`
 	if got := out.String(); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

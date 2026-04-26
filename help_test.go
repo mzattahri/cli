@@ -12,11 +12,11 @@ func TestDefaultHelpRender(t *testing.T) {
 		FullPath: "app",
 		Usage:    "A test application.",
 		Flags: []HelpFlag{
-			{Name: "verbose", Short: "v", Usage: "Enable verbose output", Default: false, Global: true},
+			{Name: "verbose", Short: "v", Usage: "Enable verbose output", Default: false, Inherited: true},
 			{Name: "force", Short: "f", Usage: "Force operation", Default: false},
 		},
 		Options: []HelpOption{
-			{Name: "repository", Short: "r", Usage: "Repository path", Default: "", Global: true},
+			{Name: "repository", Short: "r", Usage: "Repository path", Default: "", Inherited: true},
 		},
 		Commands: []HelpCommand{
 			{Name: "init", Usage: "Initialize"},
@@ -31,7 +31,7 @@ func TestDefaultHelpRender(t *testing.T) {
 	DefaultHelpFunc(&buf, help)
 
 	out := buf.String()
-	for _, want := range []string{"app", "init", "ls", "<name>", "-v, --verbose", "-r, --repository", "-f, --force", "Global Flags:", "Global Options:", "Flags:", "A test application."} {
+	for _, want := range []string{"app", "init", "ls", "<name>", "-v, --verbose", "-r, --repository", "-f, --force", "Inherited Flags:", "Inherited Options:", "Flags:", "A test application."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -78,11 +78,11 @@ func TestDefaultHelpAlignsMultilineUsage(t *testing.T) {
 		FullPath: "app",
 		Usage:    "Show status.",
 		Flags: []HelpFlag{
-			{Name: "verbose", Short: "v", Usage: "Enable verbose output\nAlso prints debug events.", Default: false, Global: true},
+			{Name: "verbose", Short: "v", Usage: "Enable verbose output\nAlso prints debug events.", Default: false, Inherited: true},
 			{Name: "force", Short: "f", Usage: "Force operation\nSkips checks.", Default: false},
 		},
 		Options: []HelpOption{
-			{Name: "repository", Short: "r", Usage: "Repository path\nCan be relative.", Default: "", Global: true},
+			{Name: "repository", Short: "r", Usage: "Repository path\nCan be relative.", Default: "", Inherited: true},
 			{Name: "config", Short: "c", Usage: "Configuration file\nCan be relative.", Default: ""},
 		},
 		Arguments: []HelpArg{
@@ -133,5 +133,38 @@ func TestDefaultHelpPreservesArgumentOrder(t *testing.T) {
 	}
 	if src > dst {
 		t.Fatalf("argument order should be preserved, got:\n%s", out)
+	}
+}
+
+func TestPositionalIndex(t *testing.T) {
+	h := &Help{
+		Options: []HelpOption{
+			{Name: "host", Short: "H"},
+			{Name: "config"},
+		},
+	}
+	tests := []struct {
+		name      string
+		completed []string
+		want      int
+	}{
+		{"empty", nil, 0},
+		{"one positional", []string{"foo"}, 1},
+		{"two positionals", []string{"foo", "bar"}, 2},
+		{"flag only", []string{"--verbose"}, 0},
+		{"option with value (long)", []string{"--host", "x"}, 0},
+		{"option with value (short)", []string{"-H", "x"}, 0},
+		{"flag then positional", []string{"--verbose", "foo"}, 1},
+		{"option then positional", []string{"--host", "x", "foo"}, 1},
+		{"positional then option", []string{"foo", "--host", "x"}, 1},
+		{"double dash suppresses", []string{"--"}, -1},
+		{"double dash mid-stream suppresses", []string{"foo", "--", "bar"}, -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := h.PositionalIndex(tt.completed); got != tt.want {
+				t.Fatalf("PositionalIndex(%v) = %d, want %d", tt.completed, got, tt.want)
+			}
+		})
 	}
 }

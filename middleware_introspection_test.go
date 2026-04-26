@@ -17,7 +17,7 @@ func TestMiddleware_RunnerFuncStripsMetadata(t *testing.T) {
 	inner := buildInnerCommand()
 	passthrough := func(next argv.Runner) argv.Runner {
 		return argv.RunnerFunc(func(out *argv.Output, call *argv.Call) error {
-			return next.RunCLI(out, call)
+			return next.RunArgv(out, call)
 		})
 	}
 
@@ -36,12 +36,12 @@ func TestMiddleware_RunnerFuncStripsMetadata(t *testing.T) {
 }
 
 // TestMiddleware_PreservesMetadata proves Middleware-based middleware
-// forwards Helper/Walker/Completer to the inner Runner — output is
+// forwards Helper/Walker/Completer to the inner Runner. Output is
 // byte-identical to invoking the inner Runner directly.
 func TestMiddleware_PreservesMetadata(t *testing.T) {
 	inner := buildInnerCommand()
-	passthrough := argv.NewMiddleware(func(next argv.Runner, out *argv.Output, call *argv.Call) error {
-		return next.RunCLI(out, call)
+	passthrough := argv.NewMiddleware(func(out *argv.Output, call *argv.Call, next argv.Runner) error {
+		return next.RunArgv(out, call)
 	})
 
 	bareOut := renderCmdHelp(t, inner)
@@ -65,8 +65,8 @@ func TestMiddleware_PreservesMetadata(t *testing.T) {
 // Middleware still surface inner metadata.
 func TestMiddleware_ChainsPreserveMetadata(t *testing.T) {
 	inner := buildInnerCommand()
-	mw := argv.NewMiddleware(func(next argv.Runner, out *argv.Output, call *argv.Call) error {
-		return next.RunCLI(out, call)
+	mw := argv.NewMiddleware(func(out *argv.Output, call *argv.Call, next argv.Runner) error {
+		return next.RunArgv(out, call)
 	})
 	doubled := mw(mw(inner))
 
@@ -92,8 +92,8 @@ func buildInnerCommand() *argv.Command {
 // interfaces with sensible defaults.
 func TestMiddleware_FallbackWhenInnerIsBare(t *testing.T) {
 	bare := argv.RunnerFunc(func(out *argv.Output, call *argv.Call) error { return nil })
-	mw := argv.NewMiddleware(func(next argv.Runner, out *argv.Output, call *argv.Call) error {
-		return next.RunCLI(out, call)
+	mw := argv.NewMiddleware(func(out *argv.Output, call *argv.Call, next argv.Runner) error {
+		return next.RunArgv(out, call)
 	})
 	wrapped := mw(bare)
 
@@ -104,27 +104,27 @@ func TestMiddleware_FallbackWhenInnerIsBare(t *testing.T) {
 		_ argv.Completer = wrapped.(argv.Completer)
 	)
 
-	// HelpCLI: should be a no-op when inner isn't a Helper.
+	// HelpArgv: should be a no-op when inner isn't a Helper.
 	var h argv.Help
 	h.Description = "preserved"
-	wrapped.(argv.Helper).HelpCLI(&h)
+	wrapped.(argv.Helper).HelpArgv(&h)
 	if h.Description != "preserved" {
-		t.Errorf("HelpCLI with non-Helper inner should not modify Help; got %q", h.Description)
+		t.Errorf("HelpArgv with non-Helper inner should not modify Help; got %q", h.Description)
 	}
 
-	// WalkCLI: should yield a single synthesized entry.
+	// WalkArgv: should yield a single synthesized entry.
 	var paths []string
-	for entry := range wrapped.(argv.Walker).WalkCLI("app cmd", nil) {
+	for entry := range wrapped.(argv.Walker).WalkArgv("app cmd", nil) {
 		paths = append(paths, entry.FullPath)
 	}
 	if len(paths) != 1 || paths[0] != "app cmd" {
-		t.Errorf("WalkCLI fallback should yield one entry 'app cmd'; got %v", paths)
+		t.Errorf("WalkArgv fallback should yield one entry 'app cmd'; got %v", paths)
 	}
 
-	// CompleteCLI: should return nil when inner isn't a Completer.
+	// CompleteArgv: should return nil when inner isn't a Completer.
 	tw := &argv.TokenWriter{Writer: &bytes.Buffer{}}
-	if err := wrapped.(argv.Completer).CompleteCLI(tw, nil, ""); err != nil {
-		t.Errorf("CompleteCLI fallback should not error; got %v", err)
+	if err := wrapped.(argv.Completer).CompleteArgv(tw, nil, ""); err != nil {
+		t.Errorf("CompleteArgv fallback should not error; got %v", err)
 	}
 }
 
@@ -143,8 +143,8 @@ func TestMiddleware_PanicsOnNilRunner(t *testing.T) {
 			t.Error("expected panic on nil runner")
 		}
 	}()
-	mw := argv.NewMiddleware(func(next argv.Runner, out *argv.Output, call *argv.Call) error {
-		return next.RunCLI(out, call)
+	mw := argv.NewMiddleware(func(out *argv.Output, call *argv.Call, next argv.Runner) error {
+		return next.RunArgv(out, call)
 	})
 	mw(nil)
 }

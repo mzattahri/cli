@@ -21,7 +21,7 @@ func TestCallWithContext(t *testing.T) {
 	stdin := bytes.NewBufferString("input")
 	call := &Call{
 		ctx:   origCtx,
-		Rest:  []string{"run", "arg"},
+		Tail:  []string{"run", "arg"},
 		Stdin: stdin,
 	}
 	call.Flags.Set("verbose", true)
@@ -146,7 +146,7 @@ func TestCommandInputsAreValidated(t *testing.T) {
 	if got := fs.names(); len(got) != 1 || got[0] != "verbose" {
 		t.Fatalf("got %v", got)
 	}
-	if got := as.HelpArguments(); len(got) != 1 || got[0].Name != "<name>" {
+	if got := as.helpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -168,7 +168,7 @@ func TestCommandInputsReturnPointersToFields(t *testing.T) {
 	if got := fs1.names(); len(got) != 1 || got[0] != "verbose" {
 		t.Fatalf("got %v", got)
 	}
-	if got := as1.HelpArguments(); len(got) != 1 || got[0].Name != "<name>" {
+	if got := as1.helpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
 }
@@ -176,7 +176,7 @@ func TestCommandInputsReturnPointersToFields(t *testing.T) {
 func TestCommandWithAllInputTypes(t *testing.T) {
 	cmd := &Command{
 		Run:         func(*Output, *Call) error { return nil },
-		CaptureRest: true,
+		Variadic: true,
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Option("host", "", "", "daemon socket")
@@ -189,17 +189,17 @@ func TestCommandWithAllInputTypes(t *testing.T) {
 	if got := os.names(); len(got) != 1 || got[0] != "host" {
 		t.Fatalf("got %v", got)
 	}
-	if got := as.HelpArguments(); len(got) != 1 || got[0].Name != "<name>" {
+	if got := as.helpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
-	if !cmd.CaptureRest {
+	if !cmd.Variadic {
 		t.Fatal("expected capture rest")
 	}
 }
 
 func TestFlushWriter(t *testing.T) {
-	// flushWriter should return nil for writers that do not implement
-	// Flusher — a bare *bytes.Buffer has no Flush method.
+	// flushWriter returns nil for writers without Flush; a bare
+	// *bytes.Buffer has no Flush method.
 	if err := flushWriter(&bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}

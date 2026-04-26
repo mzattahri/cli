@@ -13,9 +13,9 @@ import (
 
 func ExampleNewCall() {
 	cmd := &argv.Command{
-		CaptureRest: true,
+		Variadic: true,
 		Run: func(out *argv.Output, call *argv.Call) error {
-			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Rest, ","))
+			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Tail, ","))
 			return err
 		},
 	}
@@ -24,7 +24,7 @@ func ExampleNewCall() {
 
 	recorder := argvtest.NewRecorder()
 	call := argvtest.NewCall("echo a b")
-	_ = mux.RunCLI(recorder.Output(), call)
+	_ = mux.RunArgv(recorder.Output(), call)
 
 	fmt.Printf("stdout=%q stderr=%q", recorder.Stdout(), recorder.Stderr())
 	// Output: stdout="a,b" stderr=""
@@ -40,7 +40,7 @@ func ExampleNewCall_stdin() {
 	recorder := argvtest.NewRecorder()
 	call := argvtest.NewCall("cat")
 	call.Stdin = bytes.NewReader([]byte("piped input"))
-	_ = mux.RunCLI(recorder.Output(), call)
+	_ = mux.RunArgv(recorder.Output(), call)
 
 	fmt.Printf("stdout=%q stderr=%q", recorder.Stdout(), recorder.Stderr())
 	// Output: stdout="piped input" stderr=""
@@ -67,7 +67,7 @@ func ExampleNewCall_context() {
 	recorder := argvtest.NewRecorder()
 	call := argvtest.NewCall("--verbose -H unix:///tmp/docker.sock whoami alice")
 	call = call.WithContext(context.WithValue(context.Background(), authKey{}, "alice"))
-	_ = mux.RunCLI(recorder.Output(), call)
+	_ = mux.RunArgv(recorder.Output(), call)
 
 	fmt.Print(recorder.Stdout())
 	// Output: user=alice host=unix:///tmp/docker.sock verbose=true name=alice

@@ -133,10 +133,10 @@ func validateShortName(short string) string {
 	}
 	b := short[0]
 	if !isLetter(b) && !isDigit(b) {
-		panic("argv: invalid short name " + `"` + short + `"`)
+		panic(fmt.Sprintf("argv: invalid short name %q", short))
 	}
 	if short == "h" {
-		panic("argv: short name " + `"h"` + " is reserved for help")
+		panic(`argv: short name "h" is reserved for help`)
 	}
 	return short
 }

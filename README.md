@@ -4,10 +4,8 @@
 
 **`argv` treats the command line as a transport protocol.**
 
-POSIX argv is a wire format: tokens in, structured input out. This library
-handles the transport — parsing, routing, help, completion — and hands typed
-application concerns back to the caller. The pipeline mirrors `net/http`; values
-are strings.
+POSIX argv is a wire format: tokens in, structured input out. `argv` handles the
+transport. The pipeline mirrors `net/http`; values are strings.
 
 ## Quickstart
 
@@ -61,11 +59,11 @@ mux.Handle("repo", "Repository operations", repo)
 ## Middleware
 
 ```go
-var WithAuth = argv.NewMiddleware(func(next argv.Runner, out *argv.Output, call *argv.Call) error {
+var WithAuth = argv.NewMiddleware(func(out *argv.Output, call *argv.Call, next argv.Runner) error {
 	if err := checkAuth(call.Context()); err != nil {
 		return err
 	}
-	return next.RunCLI(out, call)
+	return next.RunArgv(out, call)
 })
 
 mux.Handle("deploy", "Deploy", WithAuth(WithLogging(deployCmd)))
@@ -91,7 +89,7 @@ mux.Handle("complete", "Output completions", argv.CompletionCommand(mux))
 
 ```go
 for help, _ := range (&argv.Program{}).Walk("app", mux) {
-	fmt.Printf("%s — %s\n", help.FullPath, help.Usage)
+	fmt.Printf("%s: %s\n", help.FullPath, help.Usage)
 }
 ```
 
@@ -102,7 +100,7 @@ import "mz.attahri.com/code/argv/argvtest"
 
 recorder := argvtest.NewRecorder()
 call := argvtest.NewCall("greet gopher")
-err := mux.RunCLI(recorder.Output(), call)
+err := mux.RunArgv(recorder.Output(), call)
 // recorder.Stdout() == "hello gopher\n"
 ```
 

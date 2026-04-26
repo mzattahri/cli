@@ -51,7 +51,7 @@ func (p *Program) output() *Output {
 // prints a non-help error to [os.Stderr] and calls [os.Exit] with
 // the mapped code. It never returns.
 //
-// Use [Program.Invoke] directly when you need the error value — in
+// Use [Program.Invoke] directly when you need the error value, in
 // tests, or when embedding argv in a program that manages its own
 // exit lifecycle.
 func (p *Program) Run(ctx context.Context, runner Runner, args []string) {
@@ -93,16 +93,25 @@ func (p *Program) Invoke(ctx context.Context, runner Runner, args []string) erro
 	}
 
 	out := p.output()
-	err := runner.RunCLI(out, call)
+	err := runner.RunArgv(out, call)
 
 	var helpErr *HelpError
 	if errors.As(err, &helpErr) {
 		if !helpErr.Explicit && helpErr.Reason != "" {
 			fmt.Fprintf(out.Stderr, "%s\n\n", helpErr.Reason)
 		}
-		p.renderHelp(out, runner, programName, helpErr.Path, helpErr.Explicit)
+		rErr := p.renderHelp(out, runner, programName, helpErr.Path, helpErr.Explicit)
 		if helpErr.Explicit {
 			err = nil
+		}
+		// Renderer failures must surface even when err already carries a
+		// HelpError (the implicit-help path).
+		if rErr != nil {
+			if err == nil {
+				err = rErr
+			} else {
+				err = errors.Join(err, rErr)
+			}
 		}
 	}
 
@@ -128,8 +137,10 @@ func (p *Program) Invoke(ctx context.Context, runner Runner, args []string) erro
 // [DefaultHelpFunc]). Explicit help requests write to stdout;
 // implicit ones (shown in lieu of running) write to stderr. It falls
 // back to a minimal Help built from [Program.Usage] and
-// [Program.Description] when runner does not implement Walker.
-func (p *Program) renderHelp(out *Output, runner Runner, programName, path string, explicit bool) {
+// [Program.Description] when runner does not implement Walker. The
+// returned error is whatever the renderer returned, propagated up by
+// [Program.Invoke] so a failed write surfaces.
+func (p *Program) renderHelp(out *Output, runner Runner, programName, path string, explicit bool) error {
 	renderer := p.HelpFunc
 	if renderer == nil {
 		renderer = DefaultHelpFunc
@@ -139,21 +150,19 @@ func (p *Program) renderHelp(out *Output, runner Runner, programName, path strin
 		w = out.Stdout
 	}
 	if walker, ok := runner.(Walker); ok {
-		for help := range walker.WalkCLI(programName, &Help{Usage: p.Usage, Description: p.Description}) {
+		for help := range walker.WalkArgv(programName, &Help{Usage: p.Usage, Description: p.Description}) {
 			if help.FullPath == path {
-				renderer(w, help)
-				return
+				return renderer(w, help)
 			}
 		}
 		// Walker exists but the path lives past an opaque boundary
 		// (a Runner that does not implement Walker). Render a minimal
-		// help for the requested path rather than calling runner.HelpCLI,
+		// help for the requested path rather than calling runner.HelpArgv,
 		// which would paint root-level metadata under the wrong path.
-		renderer(w, &Help{
+		return renderer(w, &Help{
 			Name:     lastPathSegment(path),
 			FullPath: path,
 		})
-		return
 	}
 	help := &Help{
 		Name:        lastPathSegment(path),
@@ -162,16 +171,16 @@ func (p *Program) renderHelp(out *Output, runner Runner, programName, path strin
 		Description: p.Description,
 	}
 	if h, ok := runner.(Helper); ok {
-		h.HelpCLI(help)
+		h.HelpArgv(help)
 	}
-	renderer(w, help)
+	return renderer(w, help)
 }
 
 // Walk returns an iterator over every command reachable from runner,
 // rooted at name (typically os.Args[0] or another user-visible label).
-// Each step yields the accumulated [*Help] for the node — including
+// Each step yields the accumulated [*Help] for the node, including
 // full command path, cascaded global flags and options, and
-// subcommand listings — and the raw [Runner] at the node. Walk visits
+// subcommand listings, and the raw [Runner] at the node. Walk visits
 // nodes depth-first, sorted alphabetically at each level.
 //
 // Walk delegates to runner's [Walker] implementation. A Runner that
@@ -186,7 +195,7 @@ func (p *Program) Walk(name string, runner Runner) iter.Seq2[*Help, Runner] {
 
 		if w, ok := runner.(Walker); ok {
 			first := true
-			for help, r := range w.WalkCLI(name, base) {
+			for help, r := range w.WalkArgv(name, base) {
 				if first {
 					r = runner
 					first = false
@@ -221,10 +230,10 @@ func walkChildren(n *node, basePath string, ancestorFlags []HelpFlag, ancestorOp
 			}
 			registered := cn.commandRunner()
 			first := true
-			for h, r := range w.WalkCLI(childPath, childBase) {
+			for h, r := range w.WalkArgv(childPath, childBase) {
 				// The first yield identifies the subtree root; replace
 				// with the runner as registered so embedding wrappers
-				// (which re-expose an inner type via WalkCLI) still
+				// (which re-expose an inner type via WalkArgv) still
 				// surface to consumers for interface detection.
 				if first {
 					r = registered
@@ -251,18 +260,18 @@ func walkChildren(n *node, basePath string, ancestorFlags []HelpFlag, ancestorOp
 	return true
 }
 
-func buildNodeHelp(n *node, name, fullPath string, globalFlags []HelpFlag, globalOptions []HelpOption) *Help {
+func buildNodeHelp(n *node, name, fullPath string, inheritedFlags []HelpFlag, inheritedOptions []HelpOption) *Help {
 	help := &Help{
 		Name:        name,
 		FullPath:    fullPath,
 		Usage:       n.usage(),
 		Description: n.description(),
 		Commands:    n.usageCommands(""),
-		Flags:       slices.Clone(globalFlags),
-		Options:     slices.Clone(globalOptions),
+		Flags:       slices.Clone(inheritedFlags),
+		Options:     slices.Clone(inheritedOptions),
 	}
 	if h, ok := n.runner.(Helper); ok {
-		h.HelpCLI(help)
+		h.HelpArgv(help)
 	}
 	return help
 }

@@ -19,8 +19,10 @@ var ErrHelp = errors.New("argv: help requested")
 // Path identifies the command path where help applies, e.g.
 // "app repo init". Explicit is true when the user typed --help; it
 // is false when help was shown because a token did not match any
-// registered subcommand. Reason is an optional short diagnostic
-// printed to stderr before implicit help is rendered. Explicit
+// registered subcommand. Reason is set only on implicit HelpErrors
+// produced by navigation failures (e.g. an unknown subcommand) and
+// is printed to stderr before the help body. Parse errors bypass
+// HelpError entirely and return an [*ExitError] instead. Explicit
 // requests exit zero; implicit ones exit [ExitUsage]. HelpError
 // satisfies [errors.Is] against [ErrHelp].
 type HelpError struct {
@@ -53,7 +55,9 @@ const (
 
 // An ExitError is an error carrying an explicit process exit code.
 type ExitError struct {
-	// Code is the process exit code.
+	// Code is the process exit code. A zero Code with a non-nil Err
+	// is coerced to [ExitFailure] by [Exit] and [Program.Run] so a
+	// real failure never silently exits zero.
 	Code int
 
 	// Err is the underlying error, or nil.
@@ -117,7 +121,9 @@ func Exit(err error) {
 
 // exitCode maps err to a process exit code: 0 for nil, [ExitUsage] for
 // [ErrHelp], the wrapped code for [ExitError], and [ExitFailure] for
-// everything else.
+// everything else. A wrapped [*ExitError] with a zero Code and a
+// non-nil Err is coerced to [ExitFailure] so a real failure never
+// silently exits zero.
 func exitCode(err error) int {
 	switch {
 	case err == nil:
@@ -127,6 +133,9 @@ func exitCode(err error) int {
 	default:
 		var exitErr *ExitError
 		if errors.As(err, &exitErr) {
+			if exitErr.Code == 0 && exitErr.Err != nil {
+				return ExitFailure
+			}
 			return exitErr.Code
 		}
 		return ExitFailure

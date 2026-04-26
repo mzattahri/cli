@@ -75,7 +75,7 @@ func EnvMiddleware(env map[string]string, lookup LookupFunc) Middleware {
 				panic(fmt.Sprintf("argv: EnvMiddleware: %q is not a declared flag or option", name))
 			}
 		}
-		return NewMiddleware(func(_ Runner, out *Output, call *Call) error {
+		return NewMiddleware(func(out *Output, call *Call, _ Runner) error {
 			for name, envVar := range env {
 				val, ok := lookup(envVar)
 				if !ok || val == "" {
@@ -97,7 +97,7 @@ func EnvMiddleware(env map[string]string, lookup LookupFunc) Middleware {
 				}
 				call.Options.Set(name, val)
 			}
-			return next.RunCLI(out, call.WithContext(withEnv(call.Context(), lookup)))
+			return next.RunArgv(out, call.WithContext(withEnv(call.Context(), lookup)))
 		})(next)
 	}
 }
@@ -107,7 +107,7 @@ func EnvMiddleware(env map[string]string, lookup LookupFunc) Middleware {
 func classifyInputs(w Walker) (flags, options map[string]bool) {
 	flags = map[string]bool{}
 	options = map[string]bool{}
-	for help := range w.WalkCLI("", nil) {
+	for help := range w.WalkArgv("", nil) {
 		for _, f := range help.Flags {
 			flags[f.Name] = true
 		}

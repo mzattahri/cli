@@ -12,10 +12,10 @@ import (
 // input kind (e.g. a flag name matching an existing option name).
 func checkCrossCollision(name, short string, hasName func(string) bool, hasShort func(string) bool) {
 	if hasName(name) {
-		panic("argv: duplicate input " + `"` + name + `"`)
+		panic(fmt.Sprintf("argv: duplicate input %q", name))
 	}
 	if short != "" && hasShort(short) {
-		panic("argv: duplicate short input " + `"` + short + `"`)
+		panic(fmt.Sprintf("argv: duplicate short input %q", short))
 	}
 }
 
@@ -25,12 +25,12 @@ func validateInputName(name string) {
 	}
 	first := name[0]
 	if !isLetter(first) {
-		panic("argv: invalid name " + `"` + name + `"`)
+		panic(fmt.Sprintf("argv: invalid name %q", name))
 	}
 	for i := 1; i < len(name); i++ {
 		b := name[i]
 		if !isLetter(b) && !isDigit(b) && b != '-' {
-			panic("argv: invalid name " + `"` + name + `"`)
+			panic(fmt.Sprintf("argv: invalid name %q", name))
 		}
 	}
 }
@@ -45,16 +45,16 @@ func isDigit(b byte) bool  { return b >= '0' && b <= '9' }
 func validateInputSpec(kind, name, short string, hasName func(string) bool, hasShort func(string) bool) string {
 	validateInputName(name)
 	if name == "help" {
-		panic(`argv: reserved ` + kind + ` name "help"`)
+		panic(fmt.Sprintf("argv: reserved %s name %q", kind, name))
 	}
 	if short != "" {
 		short = validateShortName(short)
 	}
 	if hasName(name) {
-		panic("argv: duplicate " + kind + " " + `"` + name + `"`)
+		panic(fmt.Sprintf("argv: duplicate %s %q", kind, name))
 	}
 	if short != "" && hasShort(short) {
-		panic("argv: duplicate short " + kind + " " + `"` + short + `"`)
+		panic(fmt.Sprintf("argv: duplicate short %s %q", kind, short))
 	}
 	return short
 }
@@ -66,7 +66,7 @@ type flagSpecs struct {
 func (s *flagSpecs) add(name, short string, value bool, usage string) {
 	short = validateInputSpec("flag", name, short, s.hasName, s.hasShort)
 	if other, ok := negatedCounterpart(name); ok && s.hasName(other) {
-		panic("argv: flag " + `"` + name + `"` + " collides with negation of " + `"` + other + `"`)
+		panic(fmt.Sprintf("argv: flag %q collides with negation of %q", name, other))
 	}
 	s.specs = append(s.specs, flagSpec{Name: name, Short: short, Usage: usage, Default: value})
 }
@@ -101,48 +101,38 @@ func (s *flagSpecs) hasName(name string) bool {
 	if s == nil {
 		return false
 	}
-	for _, spec := range s.specs {
-		if spec.Name == name {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(s.specs, func(spec flagSpec) bool { return spec.Name == name })
 }
 
 func (s *flagSpecs) hasShort(short string) bool {
 	if s == nil || short == "" {
 		return false
 	}
-	for _, spec := range s.specs {
-		if spec.Short == short {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(s.specs, func(spec flagSpec) bool { return spec.Short == short })
 }
 
 func (s *flagSpecs) lookupName(name string) (flagSpec, bool) {
 	if s == nil {
 		return flagSpec{}, false
 	}
-	for _, spec := range s.specs {
-		if spec.Name == name {
-			return spec, true
-		}
+	i := slices.IndexFunc(s.specs, func(spec flagSpec) bool { return spec.Name == name })
+	if i < 0 {
+		return flagSpec{}, false
 	}
-	return flagSpec{}, false
+	return s.specs[i], true
 }
 
 func (s *flagSpecs) lookupShort(b byte) (flagSpec, bool) {
 	if s == nil {
 		return flagSpec{}, false
 	}
-	for _, spec := range s.specs {
-		if len(spec.Short) == 1 && spec.Short[0] == b {
-			return spec, true
-		}
+	i := slices.IndexFunc(s.specs, func(spec flagSpec) bool {
+		return len(spec.Short) == 1 && spec.Short[0] == b
+	})
+	if i < 0 {
+		return flagSpec{}, false
 	}
-	return flagSpec{}, false
+	return s.specs[i], true
 }
 
 func (s *flagSpecs) helpEntriesNegatable(negatable bool) []HelpFlag {
@@ -186,48 +176,38 @@ func (s *optionSpecs) hasName(name string) bool {
 	if s == nil {
 		return false
 	}
-	for _, spec := range s.specs {
-		if spec.Name == name {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(s.specs, func(spec optionSpec) bool { return spec.Name == name })
 }
 
 func (s *optionSpecs) hasShort(short string) bool {
 	if s == nil || short == "" {
 		return false
 	}
-	for _, spec := range s.specs {
-		if spec.Short == short {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(s.specs, func(spec optionSpec) bool { return spec.Short == short })
 }
 
 func (s *optionSpecs) lookupName(name string) (optionSpec, bool) {
 	if s == nil {
 		return optionSpec{}, false
 	}
-	for _, spec := range s.specs {
-		if spec.Name == name {
-			return spec, true
-		}
+	i := slices.IndexFunc(s.specs, func(spec optionSpec) bool { return spec.Name == name })
+	if i < 0 {
+		return optionSpec{}, false
 	}
-	return optionSpec{}, false
+	return s.specs[i], true
 }
 
 func (s *optionSpecs) lookupShort(b byte) (optionSpec, bool) {
 	if s == nil {
 		return optionSpec{}, false
 	}
-	for _, spec := range s.specs {
-		if len(spec.Short) == 1 && spec.Short[0] == b {
-			return spec, true
-		}
+	i := slices.IndexFunc(s.specs, func(spec optionSpec) bool {
+		return len(spec.Short) == 1 && spec.Short[0] == b
+	})
+	if i < 0 {
+		return optionSpec{}, false
 	}
-	return optionSpec{}, false
+	return s.specs[i], true
 }
 
 func (s *optionSpecs) helpEntries() []HelpOption {
@@ -253,16 +233,14 @@ type argSpecs struct {
 
 func (s *argSpecs) add(name, usage string) {
 	validateInputName(name)
-	for _, existing := range s.specs {
-		if existing.Name == name {
-			panic("argv: duplicate argument " + `"` + name + `"`)
-		}
+	if slices.ContainsFunc(s.specs, func(spec argSpec) bool { return spec.Name == name }) {
+		panic(fmt.Sprintf("argv: duplicate argument %q", name))
 	}
 	s.specs = append(s.specs, argSpec{Name: name, Usage: usage})
 	s.nameCache = append(s.nameCache, name)
 }
 
-func (s *argSpecs) parse(args []string, captureRest bool) (ArgSet, []string, error) {
+func (s *argSpecs) parse(args []string, variadic bool) (ArgSet, []string, error) {
 	var parsed ArgSet
 	i := 0
 	for _, spec := range s.specs {
@@ -272,7 +250,7 @@ func (s *argSpecs) parse(args []string, captureRest bool) (ArgSet, []string, err
 		parsed.Set(spec.Name, args[i])
 		i++
 	}
-	if captureRest {
+	if variadic {
 		return parsed, slices.Clone(args[i:]), nil
 	}
 	if i < len(args) {
@@ -281,7 +259,7 @@ func (s *argSpecs) parse(args []string, captureRest bool) (ArgSet, []string, err
 	return parsed, nil, nil
 }
 
-func (s *argSpecs) HelpArguments() []HelpArg {
+func (s *argSpecs) helpArguments() []HelpArg {
 	if s == nil {
 		return nil
 	}
@@ -465,14 +443,15 @@ func (s OptionSet) Values(name string) []string {
 
 // Lookup returns the last value associated with name. The ok result
 // is true if the value was set by a caller and false for spec defaults
-// or missing entries. For all values of a repeated option, use
-// [OptionSet.Values].
+// or missing entries.
+//
+// For all values of a repeated option, use [OptionSet.Values].
 func (s OptionSet) Lookup(name string) (value string, ok bool) {
 	if s.m == nil {
 		return "", false
 	}
 	e, has := s.m[name]
-	if !has {
+	if !has || len(e.values) == 0 {
 		return "", false
 	}
 	return e.values[len(e.values)-1], e.explicit

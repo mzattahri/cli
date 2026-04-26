@@ -5,7 +5,7 @@ Create, clone, and manage git repositories.
 Usage:
   app repo [command] [options]
 
-Global Flags:
+Inherited Flags:
   -v, --verbose  Verbose output
 
 Commands:
@@ -13,4 +13,4 @@ Commands:
   init    Initialize a repository
   status  Show repository status
 
-Use "app repo [command] --help" for more information.
+Use `app repo [command] --help` for more information.

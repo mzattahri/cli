@@ -3,6 +3,7 @@ package argv
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"iter"
 	"slices"
@@ -159,10 +160,10 @@ func TestWalkMux(t *testing.T) {
 	if deploy.Description != "Deploy the app" {
 		t.Fatalf("got description %q", deploy.Description)
 	}
-	globalFlags := slices.Collect(deploy.GlobalFlags())
+	inheritedFlags := slices.Collect(deploy.InheritedFlags())
 	localFlags := slices.Collect(deploy.LocalFlags())
-	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
-		t.Fatalf("got global flags %v", globalFlags)
+	if len(inheritedFlags) != 1 || inheritedFlags[0].Name != "verbose" {
+		t.Fatalf("got global flags %v", inheritedFlags)
 	}
 	if len(localFlags) != 1 || localFlags[0].Name != "force" {
 		t.Fatalf("got local flags %v", localFlags)
@@ -198,13 +199,13 @@ func TestWalkMountedMux(t *testing.T) {
 
 	// Sub-mux commands inherit root's global flags.
 	init := helpByPath["app repo init"]
-	globalFlags := slices.Collect(init.GlobalFlags())
-	globalOptions := slices.Collect(init.GlobalOptions())
-	if len(globalFlags) != 1 || globalFlags[0].Name != "verbose" {
-		t.Fatalf("got global flags %v", globalFlags)
+	inheritedFlags := slices.Collect(init.InheritedFlags())
+	inheritedOptions := slices.Collect(init.InheritedOptions())
+	if len(inheritedFlags) != 1 || inheritedFlags[0].Name != "verbose" {
+		t.Fatalf("got global flags %v", inheritedFlags)
 	}
-	if len(globalOptions) != 1 || globalOptions[0].Name != "path" {
-		t.Fatalf("got global options %v", globalOptions)
+	if len(inheritedOptions) != 1 || inheritedOptions[0].Name != "path" {
+		t.Fatalf("got global options %v", inheritedOptions)
 	}
 }
 
@@ -232,9 +233,9 @@ type customWalker struct {
 	name string
 }
 
-func (c *customWalker) RunCLI(*Output, *Call) error { return nil }
+func (c *customWalker) RunArgv(*Output, *Call) error { return nil }
 
-func (c *customWalker) WalkCLI(path string, base *Help) iter.Seq2[*Help, Runner] {
+func (c *customWalker) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner] {
 	return func(yield func(*Help, Runner) bool) {
 		if base == nil {
 			base = &Help{}
@@ -295,7 +296,7 @@ func TestWalkCustomWalkerInMuxTree(t *testing.T) {
 
 	// The external walker received the mux's verbose flag as a global.
 	plug := helpByPath["app plug"]
-	globals := slices.Collect(plug.GlobalFlags())
+	globals := slices.Collect(plug.InheritedFlags())
 	if len(globals) != 1 || globals[0].Name != "verbose" {
 		t.Fatalf("got globals %v", globals)
 	}
@@ -317,5 +318,43 @@ func TestWalkEarlyTermination(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("got %d iterations, want 2", count)
+	}
+}
+
+func TestInvokePropagatesHelpFuncError(t *testing.T) {
+	mux := &Mux{}
+	mux.Handle("noop", "Do nothing", RunnerFunc(func(*Output, *Call) error { return nil }))
+
+	want := errors.New("renderer failed")
+	program := &Program{
+		Stdout:   &bytes.Buffer{},
+		Stderr:   &bytes.Buffer{},
+		HelpFunc: func(io.Writer, *Help) error { return want },
+	}
+	// `app --help` triggers HelpError at the mux level, which calls renderHelp.
+	err := program.Invoke(context.Background(), mux, []string{"app", "--help"})
+	if !errors.Is(err, want) {
+		t.Fatalf("expected wrapped %v, got %v", want, err)
+	}
+}
+
+func TestInvokeJoinsImplicitHelpErrorWithRendererError(t *testing.T) {
+	mux := &Mux{}
+	mux.Handle("noop", "Do nothing", RunnerFunc(func(*Output, *Call) error { return nil }))
+
+	wantRender := errors.New("renderer failed")
+	program := &Program{
+		Stdout:   &bytes.Buffer{},
+		Stderr:   &bytes.Buffer{},
+		HelpFunc: func(io.Writer, *Help) error { return wantRender },
+	}
+	// `app unknown` triggers an implicit HelpError; the renderer error
+	// must surface alongside it instead of being silently dropped.
+	err := program.Invoke(context.Background(), mux, []string{"app", "unknown"})
+	if !errors.Is(err, ErrHelp) {
+		t.Fatalf("expected wrapped ErrHelp, got %v", err)
+	}
+	if !errors.Is(err, wantRender) {
+		t.Fatalf("expected wrapped renderer error, got %v", err)
 	}
 }

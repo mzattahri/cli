@@ -8,11 +8,9 @@ import (
 	"testing"
 )
 
-// TestPropertyMatchMatchesRunCLI asserts that the runner returned by
-// Mux.Match for a token sequence is the same runner that Mux.RunCLI
-// would dispatch to. Match is meant to be a read-only preview of
-// dispatch; any divergence is a correctness bug.
-func TestPropertyMatchMatchesRunCLI(t *testing.T) {
+// TestPropertyMatchMatchesRunArgv verifies Mux.Match returns the same
+// runner that Mux.RunArgv dispatches to.
+func TestPropertyMatchMatchesRunArgv(t *testing.T) {
 	type leaf struct {
 		name   string
 		tokens []string
@@ -41,18 +39,17 @@ func TestPropertyMatchMatchesRunCLI(t *testing.T) {
 		}
 
 		call := NewCall(context.Background(), l.tokens)
-		if err := mux.RunCLI(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
-			t.Fatalf("RunCLI(%v): %v", l.tokens, err)
+		if err := mux.RunArgv(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
+			t.Fatalf("RunArgv(%v): %v", l.tokens, err)
 		}
 		if dispatched[path] != l.name {
-			t.Fatalf("Match(%v)=%q but RunCLI reached %q", l.tokens, path, dispatched[path])
+			t.Fatalf("Match(%v)=%q but RunArgv reached %q", l.tokens, path, dispatched[path])
 		}
 	}
 }
 
-// TestPropertyWalkCoversAllRunners asserts that Program.Walk yields an
-// entry for every registered runner in a Mux tree (plus intermediate
-// nodes). No runner should be silently invisible to introspection.
+// TestPropertyWalkCoversAllRunners verifies Program.Walk yields every
+// registered runner plus intermediate nodes.
 func TestPropertyWalkCoversAllRunners(t *testing.T) {
 	root := &Mux{}
 	root.Flag("verbose", "v", false, "verbose")
@@ -91,9 +88,8 @@ func TestPropertyWalkCoversAllRunners(t *testing.T) {
 	}
 }
 
-// TestPropertyEnrichPreservesIdentity asserts that enrichCall preserves
-// user-set Flags, Options, and Args across routing levels — a parent's
-// values should not be lost when descending into a child.
+// TestPropertyEnrichPreservesIdentity verifies parent-level options
+// remain visible when descending into a child mux.
 func TestPropertyEnrichPreservesIdentity(t *testing.T) {
 	root := &Mux{}
 	root.Option("tag", "t", "default-tag", "tag")
@@ -107,7 +103,7 @@ func TestPropertyEnrichPreservesIdentity(t *testing.T) {
 	root.Handle("nested", "", sub)
 
 	call := NewCall(context.Background(), []string{"--tag", "mine", "nested", "show"})
-	if err := root.RunCLI(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
+	if err := root.RunArgv(&Output{Stdout: io.Discard, Stderr: io.Discard}, call); err != nil {
 		t.Fatal(err)
 	}
 	if got != "mine" {

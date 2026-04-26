@@ -16,6 +16,8 @@ func TestExitCode(t *testing.T) {
 		{name: "default", err: errors.New("boom"), want: ExitFailure},
 		{name: "exit error", err: &ExitError{Code: 42, Err: errors.New("nope")}, want: 42},
 		{name: "wrapped exit error", err: errors.Join(errors.New("outer"), &ExitError{Code: 7, Err: errors.New("inner")}), want: 7},
+		{name: "zero code with err coerces to failure", err: &ExitError{Code: 0, Err: errors.New("oops")}, want: ExitFailure},
+		{name: "zero code without err stays zero", err: &ExitError{Code: 0}, want: ExitOK},
 	}
 
 	for _, tt := range tests {

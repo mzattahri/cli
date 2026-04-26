@@ -42,18 +42,18 @@ var goldenCases = []struct {
 			Usage:       "Deploy the app",
 			Description: "Deploys the application to the given target.",
 			Flags: []HelpFlag{
-				{Name: "verbose", Short: "v", Usage: "Verbose output", Global: true},
+				{Name: "verbose", Short: "v", Usage: "Verbose output", Inherited: true},
 				{Name: "force", Short: "f", Usage: "Skip confirmation"},
 				{Name: "dry-run", Usage: "Print plan without executing", Default: true},
 			},
 			Options: []HelpOption{
-				{Name: "config", Short: "c", Usage: "Config file", Global: true},
+				{Name: "config", Short: "c", Usage: "Config file", Inherited: true},
 				{Name: "region", Short: "r", Usage: "Target region", Default: "us-east"},
 			},
 			Arguments: []HelpArg{
 				{Name: "<target>", Usage: "Deploy target name"},
 			},
-			CaptureRest: true,
+			Variadic: true,
 		},
 	},
 	{
@@ -64,7 +64,7 @@ var goldenCases = []struct {
 			Usage:       "Manage repositories",
 			Description: "Create, clone, and manage git repositories.",
 			Flags: []HelpFlag{
-				{Name: "verbose", Short: "v", Usage: "Verbose output", Global: true},
+				{Name: "verbose", Short: "v", Usage: "Verbose output", Inherited: true},
 			},
 			Commands: []HelpCommand{
 				{Name: "init", Usage: "Initialize a repository"},

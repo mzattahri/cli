@@ -14,12 +14,13 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -125,7 +126,7 @@ func (s *store) list() []item {
 	for _, it := range s.items {
 		out = append(out, it)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	slices.SortFunc(out, func(a, b item) int { return cmp.Compare(a.ID, b.ID) })
 	return out
 }
 
