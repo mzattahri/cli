@@ -13,12 +13,12 @@ import (
 
 func ExampleNewCall() {
 	cmd := &argv.Command{
-		Variadic: true,
 		Run: func(out *argv.Output, call *argv.Call) error {
 			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Tail, ","))
 			return err
 		},
 	}
+	cmd.Tail("words", "")
 	mux := &argv.Mux{}
 	mux.Handle("echo", "Echo arguments", cmd)
 

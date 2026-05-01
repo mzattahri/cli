@@ -14,9 +14,9 @@ import (
 type HelpFunc func(w io.Writer, help *Help) error
 
 // Help holds the data passed to a [HelpFunc] when rendering help
-// output. Dispatchers own Name, FullPath, Usage, and Commands; Runners
+// output. Dispatchers own Name, FullPath, Summary, and Commands; Runners
 // implementing [Helper] contribute Description, Flags, Options,
-// Arguments, and Variadic.
+// Arguments, and Tail.
 type Help struct {
 	// Name is the final segment of the command path.
 	Name string
@@ -24,8 +24,8 @@ type Help struct {
 	// FullPath is the complete command path (e.g. "app repo init").
 	FullPath string
 
-	// Usage is a short one-line summary.
-	Usage string
+	// Summary is a short one-line summary.
+	Summary string
 
 	// Description is longer free-form help text.
 	Description string
@@ -46,9 +46,13 @@ type Help struct {
 	// When a node has Commands, Arguments is empty.
 	Arguments []HelpArg
 
-	// Variadic indicates that the command accepts trailing
-	// arguments beyond those listed in Arguments.
-	Variadic bool
+	// Tail, if non-nil, describes a trailing variadic argument that
+	// captures all positional tokens beyond those listed in Arguments
+	// into [Call.Tail]. Name is rendered as "[<name>...]" in the
+	// usage line; Usage carries the description shown in the
+	// Arguments section. An empty Usage suppresses the Arguments row
+	// but still names the tail in the usage line.
+	Tail *HelpArg
 
 	// Hidden marks the command as omitted from its parent's subcommand
 	// listing and from completion candidates. The command remains
@@ -66,33 +70,77 @@ type Help struct {
 
 // A HelpFlag describes a boolean flag in help output.
 type HelpFlag struct {
-	Name      string
-	Short     string
-	Usage     string
-	Default   bool
+	// Name is the long flag name without the leading dashes (e.g. "verbose").
+	Name string
+
+	// Short is the one-character short name without the leading dash, or
+	// empty if the flag has no short form.
+	Short string
+
+	// Usage is the one-line description shown alongside the flag. May
+	// contain embedded newlines; the renderer aligns continuation lines.
+	Usage string
+
+	// Default is the value the flag carries when not supplied by the user.
+	Default bool
+
+	// Negatable reports whether the flag may be negated with the --no-
+	// prefix at the same level it was declared. The renderer uses it to
+	// emit the "--[no-]name" form, and completion offers the negated
+	// variant as a candidate.
 	Negatable bool
+
+	// Inherited reports whether the flag was declared on a parent [Mux]
+	// rather than locally on this [Command] or [Mux]. The renderer
+	// surfaces inherited entries in a separate "Global Options" section,
+	// and completion uses the bit to scope candidate emission to the
+	// current level.
 	Inherited bool
 }
 
 // A HelpOption describes a value option in help output.
 type HelpOption struct {
-	Name    string
-	Short   string
-	Usage   string
+	// Name is the long option name without the leading dashes (e.g. "host").
+	Name string
+
+	// Short is the one-character short name without the leading dash, or
+	// empty if the option has no short form.
+	Short string
+
+	// Usage is the one-line description shown alongside the option. May
+	// contain embedded newlines; the renderer aligns continuation lines.
+	Usage string
+
+	// Default is the value the option carries when not supplied by the user.
 	Default string
+
+	// Inherited reports whether the option was declared on a parent [Mux].
+	// See [HelpFlag.Inherited] for renderer and completion semantics.
 	Inherited bool
 }
 
 // A HelpCommand describes a subcommand in help output.
 type HelpCommand struct {
-	Name        string
-	Usage       string
+	// Name is the subcommand path relative to the parent (e.g. "init"
+	// or "repo init" for a multi-segment registration).
+	Name string
+
+	// Summary is the one-line summary shown in the parent's command
+	// listing.
+	Summary string
+
+	// Description is the longer free-form text shown when help is
+	// requested for the subcommand directly.
 	Description string
 }
 
 // A HelpArg describes a positional argument in help output.
 type HelpArg struct {
-	Name  string
+	// Name is the rendered argument label, including any decoration the
+	// caller embeds (e.g. "<path>" or "[<files>...]").
+	Name string
+
+	// Usage is the one-line description shown alongside the argument.
 	Usage string
 }
 
@@ -233,8 +281,8 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 	slices.SortFunc(commands, func(a, b HelpCommand) int {
 		return cmp.Compare(a.Name, b.Name)
 	})
-	if help.Usage != "" {
-		if _, err := fmt.Fprintf(w, "%s - %s\n", help.FullPath, help.Usage); err != nil {
+	if help.Summary != "" {
+		if _, err := fmt.Fprintf(w, "%s - %s\n", help.FullPath, help.Summary); err != nil {
 			return err
 		}
 	}
@@ -248,44 +296,46 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		return err
 	}
 
-	line := "  " + help.FullPath
+	var line strings.Builder
+	line.WriteString("  ")
+	line.WriteString(help.FullPath)
 	if len(commands) > 0 {
-		line += " [command]"
+		line.WriteString(" [command]")
 	}
 	if len(help.Flags) > 0 || len(help.Options) > 0 {
-		line += " [options]"
+		line.WriteString(" [options]")
 	}
-	if len(help.Arguments) > 0 {
-		line += " [arguments]"
+	for _, arg := range help.Arguments {
+		line.WriteString(" ")
+		line.WriteString(arg.Name)
 	}
-	if help.Variadic {
-		line += " [args...]"
+	if help.Tail != nil {
+		line.WriteString(" ")
+		line.WriteString(help.Tail.Name)
 	}
-	line += "\n"
-	if _, err := io.WriteString(w, line); err != nil {
+	line.WriteString("\n")
+	if _, err := io.WriteString(w, line.String()); err != nil {
 		return err
 	}
 
-	if err := renderFlagSection(w, "Inherited Flags", help.InheritedFlags()); err != nil {
+	if err := renderInputSection(w, "Options", help.LocalFlags(), help.LocalOptions()); err != nil {
 		return err
 	}
-	if err := renderOptionSection(w, "Inherited Options", help.InheritedOptions()); err != nil {
-		return err
-	}
-	if err := renderFlagSection(w, "Flags", help.LocalFlags()); err != nil {
-		return err
-	}
-	if err := renderOptionSection(w, "Options", help.LocalOptions()); err != nil {
+	if err := renderInputSection(w, "Global Options", help.InheritedFlags(), help.InheritedOptions()); err != nil {
 		return err
 	}
 
-	if len(help.Arguments) > 0 {
+	showTailRow := help.Tail != nil && help.Tail.Usage != ""
+	if len(help.Arguments) > 0 || showTailRow {
 		if _, err := io.WriteString(w, "\nArguments:\n"); err != nil {
 			return err
 		}
-		rows := make([]helpRow, 0, len(help.Arguments))
+		rows := make([]helpRow, 0, len(help.Arguments)+1)
 		for _, argument := range help.Arguments {
 			rows = append(rows, helpRow(argument))
+		}
+		if showTailRow {
+			rows = append(rows, helpRow{Name: help.Tail.Name, Usage: help.Tail.Usage})
 		}
 		if err := renderHelpTable(w, rows); err != nil {
 			return err
@@ -298,7 +348,7 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 		}
 		rows := make([]helpRow, 0, len(commands))
 		for _, cmd := range commands {
-			rows = append(rows, helpRow{Name: cmd.Name, Usage: cmd.Usage})
+			rows = append(rows, helpRow{Name: cmd.Name, Usage: cmd.Summary})
 		}
 		if err := renderHelpTable(w, rows); err != nil {
 			return err
@@ -313,32 +363,21 @@ func DefaultHelpFunc(w io.Writer, help *Help) error {
 	return nil
 }
 
-func renderFlagSection(w io.Writer, title string, entries iter.Seq[HelpFlag]) error {
+func renderInputSection(w io.Writer, title string, flags iter.Seq[HelpFlag], options iter.Seq[HelpOption]) error {
 	var rows []helpRow
-	for e := range entries {
-		usage := e.Usage
-		if e.Default {
+	for f := range flags {
+		usage := f.Usage
+		if f.Default {
 			usage += " (default: true)"
 		}
-		rows = append(rows, helpRow{Name: formatInputName(e.Name, e.Short, e.Negatable), Usage: usage})
+		rows = append(rows, helpRow{Name: formatFlagName(f.Name, f.Short, f.Negatable), Usage: usage})
 	}
-	if len(rows) == 0 {
-		return nil
-	}
-	if _, err := fmt.Fprintf(w, "\n%s:\n", title); err != nil {
-		return err
-	}
-	return renderHelpTable(w, rows)
-}
-
-func renderOptionSection(w io.Writer, title string, entries iter.Seq[HelpOption]) error {
-	var rows []helpRow
-	for e := range entries {
-		usage := e.Usage
-		if e.Default != "" {
-			usage += fmt.Sprintf(" (default: %s)", e.Default)
+	for o := range options {
+		usage := o.Usage
+		if o.Default != "" {
+			usage += fmt.Sprintf(" (default: %s)", o.Default)
 		}
-		rows = append(rows, helpRow{Name: formatInputName(e.Name, e.Short, false), Usage: usage})
+		rows = append(rows, helpRow{Name: formatOptionName(o.Name, o.Short), Usage: usage})
 	}
 	if len(rows) == 0 {
 		return nil
@@ -370,7 +409,25 @@ func renderHelpTable(w io.Writer, rows []helpRow) error {
 	return tw.Flush()
 }
 
-func formatInputName(name, short string, negatable bool) string {
+func formatFlagName(name, short string, negatable bool) string {
+	var b strings.Builder
+	if short != "" {
+		b.WriteString("-")
+		b.WriteString(short)
+		b.WriteString(", ")
+	}
+	if negatable {
+		base, _ := strings.CutPrefix(name, "no-")
+		b.WriteString("--[no-]")
+		b.WriteString(base)
+	} else {
+		b.WriteString("--")
+		b.WriteString(name)
+	}
+	return b.String()
+}
+
+func formatOptionName(name, short string) string {
 	var b strings.Builder
 	if short != "" {
 		b.WriteString("-")
@@ -379,14 +436,8 @@ func formatInputName(name, short string, negatable bool) string {
 	}
 	b.WriteString("--")
 	b.WriteString(name)
-	if negatable {
-		b.WriteString(", --")
-		if s, ok := strings.CutPrefix(name, "no-"); ok {
-			b.WriteString(s)
-		} else {
-			b.WriteString("no-")
-			b.WriteString(name)
-		}
-	}
+	b.WriteString(" <")
+	b.WriteString(name)
+	b.WriteString(">")
 	return b.String()
 }

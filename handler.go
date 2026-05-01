@@ -2,6 +2,7 @@ package argv
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"maps"
@@ -41,9 +42,6 @@ func (f RunnerFunc) RunArgv(out *Output, call *Call) error { return f(out, call)
 type Command struct {
 	// Description is the longer help text shown by [HelpFunc].
 	Description string
-
-	// Variadic preserves unmatched trailing positional arguments in [Call.Tail].
-	Variadic bool
 
 	// Hidden omits the command from its parent's subcommand listing and
 	// from completion candidates. The command remains routable: an
@@ -85,6 +83,7 @@ type Command struct {
 	flags   flagSpecs
 	options optionSpecs
 	args    argSpecs
+	tail    *argSpec
 }
 
 // Flag declares a boolean flag toggled by presence. short is an
@@ -109,6 +108,26 @@ func (c *Command) Arg(name, usage string) {
 	c.args.add(name, usage)
 }
 
+// Tail declares a trailing variadic argument. It captures all
+// positional tokens after declared [Command.Arg]s into [Call.Tail],
+// and surfaces in help as "[<name>...]". usage is the short
+// description shown alongside in the Arguments section; an empty
+// usage suppresses that row but still names the tail in the usage
+// line.
+//
+// It panics if Tail is called twice, if name is empty or invalid,
+// or if name duplicates a declared positional argument.
+func (c *Command) Tail(name, usage string) {
+	if c.tail != nil {
+		panic("argv: Tail already declared")
+	}
+	validateInputName(name)
+	if c.args.hasName(name) {
+		panic(fmt.Sprintf("argv: tail name %q duplicates a positional argument", name))
+	}
+	c.tail = &argSpec{Name: name, Usage: usage}
+}
+
 // RunArgv parses command-level inputs from the call's argv, binds
 // positional arguments, applies defaults, and invokes Run. --help or
 // -h returns a [*HelpError] for the current path, which
@@ -131,11 +150,11 @@ func (c *Command) RunArgv(out *Output, call *Call) error {
 	var argState ArgSet
 	var tailState []string
 	if as != nil {
-		argState, tailState, err = as.parse(parsed.args, c.Variadic)
+		argState, tailState, err = as.parse(parsed.args, c.tail != nil)
 		if err != nil {
 			return Errorf(ExitUsage, "%s: %w", call.pattern, err)
 		}
-	} else if c.Variadic {
+	} else if c.tail != nil {
 		tailState = slices.Clone(parsed.args)
 	} else if len(parsed.args) > 0 {
 		return Errorf(ExitUsage, "%s: unexpected argument %q", call.pattern, parsed.args[0])
@@ -166,10 +185,10 @@ func (c *Command) inputs() (*flagSpecs, *optionSpecs, *argSpecs) {
 
 // Helper is implemented by [Runner] types that contribute help
 // metadata. HelpArgv receives an [*Help] with routing-level fields
-// (Name, FullPath, Usage, Commands) pre-populated by the dispatcher
-// and fills in Description, Flags, Options, Arguments, and
-// Variadic. HelpArgv appends to Flags and Options rather than
-// replacing them so that ancestor globals are preserved.
+// (Name, FullPath, Summary, Commands) pre-populated by the dispatcher
+// and fills in Description, Flags, Options, Arguments, and Tail.
+// HelpArgv appends to Flags and Options rather than replacing them
+// so that ancestor globals are preserved.
 //
 // Implementations must not retain h past the call.
 type Helper interface {
@@ -182,7 +201,7 @@ type Helper interface {
 // reachable descendant.
 //
 // help carries the accumulated [Help] for each node (Name, FullPath,
-// Usage, Description, cascaded inherited Flags and Options, and
+// Summary, Description, cascaded inherited Flags and Options, and
 // Commands), so consumers never need to recompute ancestor context.
 // runner is the raw [Runner] at the node, exposed so consumers can
 // type-assert for [Completer] or other optional interfaces. base
@@ -199,7 +218,7 @@ type Walker interface {
 }
 
 // HelpArgv contributes the command's declared Description, Flags,
-// Options, Arguments, and Variadic to h. It appends to h.Flags and
+// Options, Arguments, and Tail to h. It appends to h.Flags and
 // h.Options so ancestor globals set by the dispatcher are preserved.
 func (c *Command) HelpArgv(h *Help) {
 	fs, os, as := c.inputs()
@@ -211,7 +230,12 @@ func (c *Command) HelpArgv(h *Help) {
 	if as != nil {
 		h.Arguments = as.helpArguments()
 	}
-	h.Variadic = c.Variadic
+	if c.tail != nil {
+		h.Tail = &HelpArg{
+			Name:  "[<" + c.tail.Name + ">...]",
+			Usage: c.tail.Usage,
+		}
+	}
 	h.Hidden = c.Hidden
 	h.Annotations = maps.Clone(c.Annotations)
 }
@@ -225,7 +249,7 @@ func (c *Command) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner] {
 			FullPath: path,
 		}
 		if base != nil {
-			h.Usage = base.Usage
+			h.Summary = base.Summary
 			h.Description = base.Description
 			h.Flags = slices.Clone(base.Flags)
 			h.Options = slices.Clone(base.Options)
@@ -296,7 +320,7 @@ func (w *wrappedRunner) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runne
 	return func(yield func(*Help, Runner) bool) {
 		h := &Help{Name: lastPathSegment(path), FullPath: path}
 		if base != nil {
-			h.Usage = base.Usage
+			h.Summary = base.Summary
 			h.Description = base.Description
 			h.Flags = slices.Clone(base.Flags)
 			h.Options = slices.Clone(base.Options)

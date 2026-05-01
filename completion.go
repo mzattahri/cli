@@ -89,8 +89,8 @@ func (f CompleterFunc) CompleteArgv(w *TokenWriter, completed []string, partial 
 //
 // The concrete return type lets callers inspect or augment the
 // command (set Description, override Run with middleware, etc.)
-// before mounting it. Two fields are load-bearing: [Command.Variadic]
-// must stay true so all shell tokens reach the handler, and
+// before mounting it. Two pieces are load-bearing: [Command.Tail]
+// must stay declared so all shell tokens reach the handler, and
 // [Command.Hidden] defaults to true so the runner does not appear in
 // the parent's subcommand listing or completion output.
 //
@@ -116,9 +116,8 @@ func CompletionCommand(root Runner) *Command {
 	if root == nil {
 		panic("argv: nil runner")
 	}
-	return &Command{
+	cmd := &Command{
 		Description: "Emit tab-completion candidates for the current shell tokens.",
-		Variadic: true,
 		Hidden:      true,
 		Run: func(out *Output, call *Call) error {
 			args := call.Tail
@@ -132,6 +131,8 @@ func CompletionCommand(root Runner) *Command {
 			return walkComplete(root, tw, completed, partial)
 		},
 	}
+	cmd.Tail("tokens", "")
+	return cmd
 }
 
 // walkComplete dispatches completion for root by detecting the
@@ -258,7 +259,7 @@ func writeFlagEntries(w *TokenWriter, flags []HelpFlag, options []HelpOption, pa
 // writeSubcommands emits subcommand name candidates from Help.Commands.
 func writeSubcommands(w *TokenWriter, commands []HelpCommand, partial string) error {
 	for _, c := range commands {
-		if err := writeEntry(w, c.Name, c.Usage, partial); err != nil {
+		if err := writeEntry(w, c.Name, c.Summary, partial); err != nil {
 			return err
 		}
 	}

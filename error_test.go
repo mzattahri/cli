@@ -78,6 +78,50 @@ func TestErrorf(t *testing.T) {
 	}
 }
 
+func TestMessageExceptHelp(t *testing.T) {
+	rendererErr := errors.New("renderer failed")
+	helpErr := &HelpError{Path: "app"}
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "nil", err: nil, want: ""},
+		{name: "ErrHelp alone", err: ErrHelp, want: ""},
+		{name: "HelpError alone", err: helpErr, want: ""},
+		{name: "plain error", err: errors.New("boom"), want: "boom"},
+		{name: "ExitError wraps plain", err: &ExitError{Code: 1, Err: errors.New("boom")}, want: "boom"},
+		{name: "ExitError wraps HelpError", err: &ExitError{Code: ExitUsage, Err: helpErr}, want: ""},
+		{
+			name: "ExitError wraps Join(HelpError, renderer)",
+			err:  &ExitError{Code: ExitUsage, Err: errors.Join(helpErr, rendererErr)},
+			want: "renderer failed",
+		},
+		{
+			name: "Join of three: help, renderer, other",
+			err:  errors.Join(helpErr, rendererErr, errors.New("other")),
+			want: "renderer failed\nother",
+		},
+		{
+			name: "ExitError with nil Err and zero code",
+			err:  &ExitError{Code: 0},
+			want: "",
+		},
+		{
+			name: "ExitError with nil Err and non-zero code",
+			err:  &ExitError{Code: 7},
+			want: "argv: exit code 7",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := messageExceptHelp(tt.err); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExitCodeConstants(t *testing.T) {
 	tests := []struct {
 		name string

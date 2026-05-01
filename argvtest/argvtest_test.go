@@ -16,12 +16,12 @@ import (
 func TestCallCapturesStdout(t *testing.T) {
 	mux := &argv.Mux{}
 	cmd := &argv.Command{
-		Variadic: true,
 		Run: func(out *argv.Output, call *argv.Call) error {
 			_, err := fmt.Fprint(out.Stdout, strings.Join(call.Tail, ","))
 			return err
 		},
 	}
+	cmd.Tail("words", "")
 	mux.Handle("echo", "", cmd)
 
 	recorder := argvtest.NewRecorder()

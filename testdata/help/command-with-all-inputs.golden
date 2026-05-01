@@ -3,20 +3,17 @@ app deploy - Deploy the app
 Deploys the application to the given target.
 
 Usage:
-  app deploy [options] [arguments] [args...]
-
-Inherited Flags:
-  -v, --verbose  Verbose output
-
-Inherited Options:
-  -c, --config  Config file
-
-Flags:
-  -f, --force  Skip confirmation
-  --dry-run    Print plan without executing (default: true)
+  app deploy [options] <target> [<files>...]
 
 Options:
-  -r, --region  Target region (default: us-east)
+  -f, --force            Skip confirmation
+  --[no-]dry-run         Print plan without executing (default: true)
+  -r, --region <region>  Target region (default: us-east)
+
+Global Options:
+  -v, --verbose          Verbose output
+  -c, --config <config>  Config file
 
 Arguments:
-  <target>  Deploy target name
+  <target>      Deploy target name
+  [<files>...]  Files to upload alongside the deploy

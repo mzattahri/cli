@@ -30,7 +30,7 @@ var goldenCases = []struct {
 		help: &Help{
 			Name:        "app",
 			FullPath:    "app",
-			Usage:       "A demo CLI",
+			Summary:     "A demo CLI",
 			Description: "Longer-form description\nwith two lines.",
 		},
 	},
@@ -39,12 +39,12 @@ var goldenCases = []struct {
 		help: &Help{
 			Name:        "deploy",
 			FullPath:    "app deploy",
-			Usage:       "Deploy the app",
+			Summary:     "Deploy the app",
 			Description: "Deploys the application to the given target.",
 			Flags: []HelpFlag{
 				{Name: "verbose", Short: "v", Usage: "Verbose output", Inherited: true},
 				{Name: "force", Short: "f", Usage: "Skip confirmation"},
-				{Name: "dry-run", Usage: "Print plan without executing", Default: true},
+				{Name: "dry-run", Usage: "Print plan without executing", Default: true, Negatable: true},
 			},
 			Options: []HelpOption{
 				{Name: "config", Short: "c", Usage: "Config file", Inherited: true},
@@ -53,7 +53,7 @@ var goldenCases = []struct {
 			Arguments: []HelpArg{
 				{Name: "<target>", Usage: "Deploy target name"},
 			},
-			Variadic: true,
+			Tail: &HelpArg{Name: "[<files>...]", Usage: "Files to upload alongside the deploy"},
 		},
 	},
 	{
@@ -61,15 +61,15 @@ var goldenCases = []struct {
 		help: &Help{
 			Name:        "repo",
 			FullPath:    "app repo",
-			Usage:       "Manage repositories",
+			Summary:     "Manage repositories",
 			Description: "Create, clone, and manage git repositories.",
 			Flags: []HelpFlag{
 				{Name: "verbose", Short: "v", Usage: "Verbose output", Inherited: true},
 			},
 			Commands: []HelpCommand{
-				{Name: "init", Usage: "Initialize a repository"},
-				{Name: "clone", Usage: "Clone an existing repository"},
-				{Name: "status", Usage: "Show repository status"},
+				{Name: "init", Summary: "Initialize a repository"},
+				{Name: "clone", Summary: "Clone an existing repository"},
+				{Name: "status", Summary: "Show repository status"},
 			},
 		},
 	},
@@ -78,7 +78,7 @@ var goldenCases = []struct {
 		help: &Help{
 			Name:     "up",
 			FullPath: "tailscale up",
-			Usage:    "Bring tailscaled up",
+			Summary:  "Bring tailscaled up",
 			Flags: []HelpFlag{
 				{Name: "accept-dns", Usage: "Accept DNS configuration", Default: true, Negatable: true},
 				{Name: "no-cache", Usage: "Disable cache", Negatable: true},
@@ -90,7 +90,7 @@ var goldenCases = []struct {
 		help: &Help{
 			Name:     "arg",
 			FullPath: "app arg",
-			Usage:    "Short",
+			Summary:  "Short",
 			Flags: []HelpFlag{
 				{Name: "verbose", Short: "v", Usage: "Line one of usage.\nLine two of usage."},
 			},

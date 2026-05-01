@@ -52,8 +52,8 @@ type Call struct {
 	// Args holds bound positional arguments.
 	Args ArgSet
 
-	// Tail holds trailing positional arguments when
-	// [Command.Variadic] is set.
+	// Tail holds trailing positional arguments captured by
+	// [Command.Variadic].
 	Tail []string
 
 	// argNames preserves declared argument order for [Call.String].

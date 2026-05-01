@@ -32,7 +32,7 @@ func Example() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "A demo CLI",
+		Summary:"A demo CLI",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -44,7 +44,6 @@ func Example() {
 
 func ExampleCommand() {
 	cmd := &argv.Command{
-		Variadic: true,
 		Run: func(out *argv.Output, call *argv.Call) error {
 			detach := call.Flags.Get("detach")
 			_, err := fmt.Fprintf(out.Stdout, "image=%s detach=%t command=%v", call.Args.Get("image"), detach, call.Tail)
@@ -53,13 +52,14 @@ func ExampleCommand() {
 	}
 	cmd.Flag("detach", "", false, "Run in background")
 	cmd.Arg("image", "Image reference")
+	cmd.Tail("command", "Command and arguments to run")
 
 	mux := &argv.Mux{}
 	mux.Handle("run", "Run a container", cmd)
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Run a container",
+		Summary:"Run a container",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -85,7 +85,7 @@ func ExampleCommand_negateFlags() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Manage network state",
+		Summary:"Manage network state",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -108,7 +108,7 @@ func ExampleProgram_Invoke() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Greet someone",
+		Summary:"Greet someone",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -125,7 +125,7 @@ func ExampleProgram_Invoke_errorHandling() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Demonstrate exit codes",
+		Summary:"Demonstrate exit codes",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -145,7 +145,7 @@ func ExampleProgram_Invoke_helpDetection() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Demonstrate help detection",
+		Summary:"Demonstrate help detection",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -175,7 +175,7 @@ func ExampleNewMiddleware() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Deploy with logging",
+		Summary:"Deploy with logging",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -204,7 +204,7 @@ func ExampleNewMiddleware_nested() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Deploy with layered middleware",
+		Summary:"Deploy with layered middleware",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -231,7 +231,7 @@ func ExampleCall_WithContext() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Inject an auth identity via middleware",
+		Summary:"Inject an auth identity via middleware",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -256,7 +256,7 @@ func ExampleMux_Flag_submux() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Repository tools",
+		Summary:"Repository tools",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -275,7 +275,7 @@ func ExampleCompletionCommand() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Print greetings with shell completion",
+		Summary:"Print greetings with shell completion",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -329,7 +329,7 @@ func ExampleCompleter() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Deploy to a host",
+		Summary:"Deploy to a host",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -397,7 +397,7 @@ func ExampleCompleter_positional() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Print files with completion",
+		Summary:"Print files with completion",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -438,7 +438,7 @@ func ExampleEnvMiddleware() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Deploy via API",
+		Summary:"Deploy via API",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -485,7 +485,7 @@ func ExampleCall_WithContext_timeout() {
 
 	var stdout, stderr bytes.Buffer
 	program := &argv.Program{
-		Usage:  "Fetch data, optionally with timeout",
+		Summary:"Fetch data, optionally with timeout",
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}
@@ -535,8 +535,8 @@ func ExampleProgram_Walk() {
 
 	program := &argv.Program{}
 	for help := range program.Walk("app", mux) {
-		if help.Usage != "" {
-			fmt.Printf("%s: %s\n", help.FullPath, help.Usage)
+		if help.Summary != "" {
+			fmt.Printf("%s: %s\n", help.FullPath, help.Summary)
 		} else {
 			fmt.Println(help.FullPath)
 		}
@@ -600,11 +600,11 @@ func (s staticWalker) RunArgv(*argv.Output, *argv.Call) error { return nil }
 
 func (s staticWalker) WalkArgv(path string, base *argv.Help) iter.Seq2[*argv.Help, argv.Runner] {
 	return func(yield func(*argv.Help, argv.Runner) bool) {
-		if !yield(&argv.Help{Name: s.name, FullPath: path, Usage: "Synthetic root"}, s) {
+		if !yield(&argv.Help{Name: s.name, FullPath: path, Summary: "Synthetic root"}, s) {
 			return
 		}
 		child := path + " child"
-		yield(&argv.Help{Name: "child", FullPath: child, Usage: "Synthetic child"}, s)
+		yield(&argv.Help{Name: "child", FullPath: child, Summary: "Synthetic child"}, s)
 	}
 }
 
@@ -613,10 +613,10 @@ func ExampleWalker() {
 	mux.Handle("plug", "External subtree", staticWalker{name: "plug"})
 
 	for help := range (&argv.Program{}).Walk("app", mux) {
-		if help.Usage == "" {
+		if help.Summary == "" {
 			fmt.Println(help.FullPath)
 		} else {
-			fmt.Printf("%s: %s\n", help.FullPath, help.Usage)
+			fmt.Printf("%s: %s\n", help.FullPath, help.Summary)
 		}
 	}
 	// Output:

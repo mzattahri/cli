@@ -233,11 +233,18 @@ type argSpecs struct {
 
 func (s *argSpecs) add(name, usage string) {
 	validateInputName(name)
-	if slices.ContainsFunc(s.specs, func(spec argSpec) bool { return spec.Name == name }) {
+	if s.hasName(name) {
 		panic(fmt.Sprintf("argv: duplicate argument %q", name))
 	}
 	s.specs = append(s.specs, argSpec{Name: name, Usage: usage})
 	s.nameCache = append(s.nameCache, name)
+}
+
+func (s *argSpecs) hasName(name string) bool {
+	if s == nil {
+		return false
+	}
+	return slices.ContainsFunc(s.specs, func(spec argSpec) bool { return spec.Name == name })
 }
 
 func (s *argSpecs) parse(args []string, variadic bool) (ArgSet, []string, error) {
@@ -506,7 +513,11 @@ func (s *OptionSet) setDefault(name, value string) {
 }
 
 // addParsed appends a parser-driven value without re-validating name.
-// See [FlagSet.setParsed] for rationale.
+// Append (rather than replace) is intentional: a repeated CLI option
+// such as "--tag a --tag b" must accumulate so [OptionSet.Values]
+// returns both. See [FlagSet.setParsed] for the validation-skip
+// rationale; the verb difference from setParsed mirrors [OptionSet.Add]
+// versus [OptionSet.Set].
 func (s *OptionSet) addParsed(name, value string) {
 	if s.m == nil {
 		s.m = make(map[string]optionEntry)

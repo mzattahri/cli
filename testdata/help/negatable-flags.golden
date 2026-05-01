@@ -3,6 +3,6 @@ tailscale up - Bring tailscaled up
 Usage:
   tailscale up [options]
 
-Flags:
-  --accept-dns, --no-accept-dns  Accept DNS configuration (default: true)
-  --no-cache, --cache            Disable cache
+Options:
+  --[no-]accept-dns  Accept DNS configuration (default: true)
+  --[no-]cache       Disable cache

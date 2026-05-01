@@ -42,13 +42,21 @@ type Mux struct {
 	root    node
 	flags   flagSpecs
 	options optionSpecs
+
+	// descendantNames caches the union of locally-declared flag and
+	// option names across every descendant runner. nil means "rebuild
+	// on next read"; [Mux.Handle] invalidates it after mounting. The
+	// cache is not invalidated when a previously mounted descendant is
+	// itself mutated (e.g. a Flag added to an already-mounted child
+	// mux); the assumed pattern is build-then-run.
+	descendantNames map[string]string
 }
 
 // node is an internal trie node for command routing.
 type node struct {
-	runner    Runner
-	usageText string
-	children  map[string]*node
+	runner      Runner
+	summaryText string
+	children    map[string]*node
 }
 
 func (n *node) getOrCreate(name string) *node {
@@ -68,7 +76,7 @@ func (n *node) childNames() []string {
 	return slices.Sorted(maps.Keys(n.children))
 }
 
-func (n *node) usageCommands(prefix string) []HelpCommand {
+func (n *node) summaryCommands(prefix string) []HelpCommand {
 	names := n.childNames()
 	cmds := make([]HelpCommand, 0, len(names))
 	for _, name := range names {
@@ -82,14 +90,14 @@ func (n *node) usageCommands(prefix string) []HelpCommand {
 		}
 		cmds = append(cmds, HelpCommand{
 			Name:        path,
-			Usage:       child.usage(),
+			Summary:     child.summary(),
 			Description: child.description(),
 		})
 	}
 	return cmds
 }
 
-func (n *node) usage() string { return n.usageText }
+func (n *node) summary() string { return n.summaryText }
 
 // description reads the runner's [Helper] description live, so dynamic
 // Helpers reflect their current state in subcommand listings.
@@ -123,10 +131,10 @@ func validateRunner(runner Runner) {
 	}
 }
 
-func (n *node) setRunner(runner Runner, usage string) {
+func (n *node) setRunner(runner Runner, summary string) {
 	validateRunner(runner)
 	n.runner = runner
-	n.usageText = usage
+	n.summaryText = summary
 }
 
 func (n *node) commandRunner() Runner { return n.runner }
@@ -134,8 +142,10 @@ func (n *node) hasRunner() bool       { return n.runner != nil }
 
 // Flag declares a mux-level boolean flag parsed before subcommand
 // routing. Parsed values accumulate in [Call.Flags]. short is an
-// optional one-character short form. It panics on duplicate names
-// or on a name already declared locally by a descendant runner.
+// optional one-character short form. It panics on duplicate names,
+// on a name already declared locally by a descendant runner, or on
+// a name whose --no- counterpart matches such a descendant input
+// (which would be silently rewritten by negation parsing).
 func (m *Mux) Flag(name, short string, value bool, usage string) {
 	checkCrossCollision(name, short, m.options.hasName, m.options.hasShort)
 	m.checkDescendantShadow(name)
@@ -145,8 +155,9 @@ func (m *Mux) Flag(name, short string, value bool, usage string) {
 // Option declares a mux-level named value option parsed before
 // subcommand routing. Parsed values accumulate in [Call.Options].
 // short is an optional one-character short form. It panics on
-// duplicate names or on a name already declared locally by a
-// descendant runner.
+// duplicate names, on a name already declared locally by a descendant
+// runner, or on a name whose --no- counterpart matches such a
+// descendant input.
 func (m *Mux) Option(name, short, value, usage string) {
 	checkCrossCollision(name, short, m.flags.hasName, m.flags.hasShort)
 	m.checkDescendantShadow(name)
@@ -165,11 +176,11 @@ func (m *Mux) muxInputs() (*flagSpecs, *optionSpecs) {
 	return fs, os
 }
 
-// Handle registers runner at pattern with a short usage summary.
+// Handle registers runner at pattern with a short one-line summary.
 // Pattern segments are split on whitespace; multi-segment patterns
 // create nested command paths such as "repo init".
 //
-// usage is the one-line shown in parent command listings; the
+// summary is the one-line shown in parent command listings; the
 // runner's [Helper]-supplied Description carries longer prose.
 //
 // An empty pattern registers a root handler invoked when no
@@ -179,7 +190,7 @@ func (m *Mux) muxInputs() (*flagSpecs, *optionSpecs) {
 // It panics on conflicting registrations, a nil runner, or a local
 // flag or option in runner's subtree whose name collides with one
 // declared on this mux.
-func (m *Mux) Handle(pattern string, usage string, runner Runner) {
+func (m *Mux) Handle(pattern string, summary string, runner Runner) {
 	n := &m.root
 	for _, seg := range strings.Fields(pattern) {
 		n = n.getOrCreate(seg)
@@ -188,10 +199,34 @@ func (m *Mux) Handle(pattern string, usage string, runner Runner) {
 		panic(fmt.Sprintf("argv: command conflict at %q", pattern))
 	}
 	m.checkRunnerShadow(pattern, runner)
-	n.setRunner(runner, usage)
+	n.setRunner(runner, summary)
+	m.descendantNames = nil
 }
 
 func (m *Mux) checkDescendantShadow(name string) {
+	desc := m.descendantInputNames()
+	check := func(candidate string) {
+		if path, ok := desc[candidate]; ok {
+			if candidate == name {
+				panic(fmt.Sprintf("argv: mux input %q shadows local input at %q", name, path))
+			}
+			panic(fmt.Sprintf("argv: mux input %q shadows local input %q at %q via --no- negation", name, candidate, path))
+		}
+	}
+	check(name)
+	if other, ok := negatedCounterpart(name); ok {
+		check(other)
+	}
+}
+
+// descendantInputNames returns a name → path map of every locally-
+// declared flag and option name across the descendant subtree. It
+// caches the result on the Mux; [Mux.Handle] invalidates the cache.
+func (m *Mux) descendantInputNames() map[string]string {
+	if m.descendantNames != nil {
+		return m.descendantNames
+	}
+	out := map[string]string{}
 	first := true
 	for help := range m.WalkArgv("", nil) {
 		if first {
@@ -199,33 +234,49 @@ func (m *Mux) checkDescendantShadow(name string) {
 			continue
 		}
 		for _, f := range help.Flags {
-			if !f.Inherited && f.Name == name {
-				panic(fmt.Sprintf("argv: mux input %q shadows local input at %q", name, help.FullPath))
+			if !f.Inherited {
+				if _, seen := out[f.Name]; !seen {
+					out[f.Name] = help.FullPath
+				}
 			}
 		}
 		for _, o := range help.Options {
-			if !o.Inherited && o.Name == name {
-				panic(fmt.Sprintf("argv: mux input %q shadows local input at %q", name, help.FullPath))
+			if !o.Inherited {
+				if _, seen := out[o.Name]; !seen {
+					out[o.Name] = help.FullPath
+				}
 			}
 		}
 	}
+	m.descendantNames = out
+	return out
 }
 
 func (m *Mux) checkRunnerShadow(pattern string, runner Runner) {
-	assert := func(path, name string) {
-		if m.flags.hasName(name) || m.options.hasName(name) {
-			panic(fmt.Sprintf("argv: input %q at %q shadowed by mux input", name, path))
+	assert := func(path, declared, candidate string) {
+		if !m.flags.hasName(candidate) && !m.options.hasName(candidate) {
+			return
+		}
+		if declared == candidate {
+			panic(fmt.Sprintf("argv: input %q at %q shadowed by mux input", declared, path))
+		}
+		panic(fmt.Sprintf("argv: input %q at %q shadowed by mux input %q via --no- negation", declared, path, candidate))
+	}
+	check := func(path, name string) {
+		assert(path, name, name)
+		if other, ok := negatedCounterpart(name); ok {
+			assert(path, name, other)
 		}
 	}
 	emit := func(path string, flags []HelpFlag, options []HelpOption) {
 		for _, f := range flags {
 			if !f.Inherited {
-				assert(path, f.Name)
+				check(path, f.Name)
 			}
 		}
 		for _, o := range options {
 			if !o.Inherited {
-				assert(path, o.Name)
+				check(path, o.Name)
 			}
 		}
 	}
@@ -280,7 +331,7 @@ func (m *Mux) HelpArgv(h *Help) {
 	h.Flags = append(h.Flags, m.flags.helpEntriesNegatable(m.NegateFlags)...)
 	h.Options = append(h.Options, m.options.helpEntries()...)
 	if len(h.Commands) == 0 {
-		h.Commands = m.root.usageCommands("")
+		h.Commands = m.root.summaryCommands("")
 	}
 	h.Hidden = m.Hidden
 	h.Annotations = maps.Clone(m.Annotations)
@@ -303,9 +354,9 @@ func (m *Mux) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner] {
 		help := &Help{
 			Name:        lastPathSegment(path),
 			FullPath:    path,
-			Usage:       base.Usage,
+			Summary:     base.Summary,
 			Description: cmp.Or(base.Description, m.Description),
-			Commands:    m.root.usageCommands(""),
+			Commands:    m.root.summaryCommands(""),
 			Flags:       slices.Concat(base.Flags, ownFlags),
 			Options:     slices.Concat(base.Options, ownOptions),
 			Hidden:      m.Hidden,

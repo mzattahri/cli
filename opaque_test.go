@@ -164,7 +164,7 @@ func TestOpaque_UnknownSubcommandBecomesHelpError(t *testing.T) {
 func TestOpaque_ExplicitHelpAtOpaqueBoundary(t *testing.T) {
 	outer, _ := newOuter()
 	var stdout, stderr bytes.Buffer
-	p := &argv.Program{Stdout: &stdout, Stderr: &stderr, Usage: "test app"}
+	p := &argv.Program{Stdout: &stdout, Stderr: &stderr, Summary: "test app"}
 	err := p.Invoke(context.Background(), outer, []string{"app", "repo", "--help"})
 	if err != nil {
 		t.Fatalf("Invoke: %v", err)
@@ -176,7 +176,7 @@ func TestOpaque_ExplicitHelpAtOpaqueBoundary(t *testing.T) {
 func TestOpaque_ExplicitHelpPastOpaqueBoundary(t *testing.T) {
 	outer, _ := newOuter()
 	var stdout, stderr bytes.Buffer
-	p := &argv.Program{Stdout: &stdout, Stderr: &stderr, Usage: "test app"}
+	p := &argv.Program{Stdout: &stdout, Stderr: &stderr, Summary: "test app"}
 	err := p.Invoke(context.Background(), outer, []string{"app", "repo", "init", "--help"})
 	if err != nil {
 		t.Fatalf("Invoke: %v", err)
@@ -202,7 +202,7 @@ func TestOpaque_ExplicitHelpPastOpaqueBoundary(t *testing.T) {
 func TestOpaque_OuterHelpListsOpaqueButNotItsSubtree(t *testing.T) {
 	outer, _ := newOuter()
 	var stdout, stderr bytes.Buffer
-	p := &argv.Program{Stdout: &stdout, Stderr: &stderr, Usage: "test app"}
+	p := &argv.Program{Stdout: &stdout, Stderr: &stderr, Summary: "test app"}
 	err := p.Invoke(context.Background(), outer, []string{"app", "--help"})
 	if err != nil {
 		t.Fatalf("Invoke: %v", err)
@@ -258,7 +258,7 @@ func TestOpaque_CompletionPastOpaqueBoundaryEmpty(t *testing.T) {
 func TestTransparent_OuterHelpStillListsNode(t *testing.T) {
 	outer := newOuterTransparent()
 	var stdout bytes.Buffer
-	p := &argv.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}, Usage: "test app"}
+	p := &argv.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}, Summary: "test app"}
 	if err := p.Invoke(context.Background(), outer, []string{"app", "--help"}); err != nil {
 		t.Fatalf("Invoke: %v", err)
 	}
@@ -272,7 +272,7 @@ func TestTransparent_OuterHelpStillListsNode(t *testing.T) {
 func TestTransparent_BoundaryHelpListsInnerSubcommands(t *testing.T) {
 	outer := newOuterTransparent()
 	var stdout bytes.Buffer
-	p := &argv.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}, Usage: "test app"}
+	p := &argv.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}, Summary: "test app"}
 	if err := p.Invoke(context.Background(), outer, []string{"app", "repo", "--help"}); err != nil {
 		t.Fatalf("Invoke: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestTransparent_BoundaryHelpListsInnerSubcommands(t *testing.T) {
 func TestTransparent_DeepHelpRendersCorrectly(t *testing.T) {
 	outer := newOuterTransparent()
 	var stdout bytes.Buffer
-	p := &argv.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}, Usage: "test app"}
+	p := &argv.Program{Stdout: &stdout, Stderr: &bytes.Buffer{}, Summary: "test app"}
 	if err := p.Invoke(context.Background(), outer, []string{"app", "repo", "init", "--help"}); err != nil {
 		t.Fatalf("Invoke: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestTransparent_CompletionDescendsIntoInnerSubtree(t *testing.T) {
 
 func TestTransparent_ProgramWalkEnumeratesFullTree(t *testing.T) {
 	outer := newOuterTransparent()
-	p := &argv.Program{Usage: "test app"}
+	p := &argv.Program{Summary: "test app"}
 	var paths []string
 	for h := range p.Walk("app", outer) {
 		paths = append(paths, h.FullPath)

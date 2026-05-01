@@ -244,6 +244,118 @@ func TestOptionSetMergeIsolation(t *testing.T) {
 	}
 }
 
+func TestFlagSetClone(t *testing.T) {
+	t.Run("nil receiver", func(t *testing.T) {
+		var src FlagSet
+		c := src.Clone()
+		c.Set("verbose", true)
+		if _, ok := src.Lookup("verbose"); ok {
+			t.Fatal("clone of zero FlagSet shared storage with src")
+		}
+	})
+	t.Run("populated", func(t *testing.T) {
+		var src FlagSet
+		src.Set("verbose", true)
+		src.Set("force", false)
+		c := src.Clone()
+		c.Set("verbose", false)
+		c.Set("new", true)
+		if v, _ := src.Lookup("verbose"); !v {
+			t.Fatal("src mutated by clone change")
+		}
+		if _, ok := src.Lookup("new"); ok {
+			t.Fatal("src observed clone-only entry")
+		}
+		if v, _ := c.Lookup("force"); v {
+			t.Fatal("clone lost original entry")
+		}
+	})
+}
+
+func TestOptionSetClone(t *testing.T) {
+	t.Run("nil receiver", func(t *testing.T) {
+		var src OptionSet
+		c := src.Clone()
+		c.Set("host", "x")
+		if _, ok := src.Lookup("host"); ok {
+			t.Fatal("clone of zero OptionSet shared storage with src")
+		}
+	})
+	t.Run("populated", func(t *testing.T) {
+		var src OptionSet
+		src.Add("tag", "a")
+		src.Add("tag", "b")
+		c := src.Clone()
+		c.Add("tag", "c")
+		if got := src.Values("tag"); !slices.Equal(got, []string{"a", "b"}) {
+			t.Fatalf("src mutated through clone: %v", got)
+		}
+		if got := c.Values("tag"); !slices.Equal(got, []string{"a", "b", "c"}) {
+			t.Fatalf("clone missing appended value: %v", got)
+		}
+	})
+}
+
+func TestArgSetClone(t *testing.T) {
+	t.Run("nil receiver", func(t *testing.T) {
+		var src ArgSet
+		c := src.Clone()
+		c.Set("path", "/tmp")
+		if _, ok := src.Lookup("path"); ok {
+			t.Fatal("clone of zero ArgSet shared storage with src")
+		}
+	})
+	t.Run("populated", func(t *testing.T) {
+		var src ArgSet
+		src.Set("path", "/tmp")
+		src.Set("name", "alice")
+		c := src.Clone()
+		c.Set("path", "/var")
+		c.Set("new", "added")
+		if got := src.Get("path"); got != "/tmp" {
+			t.Fatalf("src mutated: got %q", got)
+		}
+		if _, ok := src.Lookup("new"); ok {
+			t.Fatal("src observed clone-only entry")
+		}
+		if got := c.Get("name"); got != "alice" {
+			t.Fatalf("clone lost original entry: got %q", got)
+		}
+	})
+}
+
+func TestArgSetAll(t *testing.T) {
+	var s ArgSet
+	s.Set("path", "/tmp")
+	s.Set("name", "alice")
+	s.Set("kind", "regular")
+
+	collected := map[string]string{}
+	var order []string
+	for k, v := range s.All() {
+		collected[k] = v
+		order = append(order, k)
+	}
+	if len(collected) != 3 || collected["path"] != "/tmp" || collected["name"] != "alice" || collected["kind"] != "regular" {
+		t.Fatalf("got %v", collected)
+	}
+	if !slices.IsSorted(order) {
+		t.Fatalf("All did not yield in sorted order: %v", order)
+	}
+
+	// Early termination must stop iteration.
+	var seen int
+	for range s.All() {
+		seen++
+		if seen == 1 {
+			break
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("expected break to stop after 1 yield, got %d", seen)
+	}
+}
+
 func TestSetValidatesName(t *testing.T) {
 	cases := []struct {
 		name     string

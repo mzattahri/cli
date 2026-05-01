@@ -146,12 +146,12 @@ func TestPositionalArgsAreStrings(t *testing.T) {
 func TestVariadicPreservesTrailingArgs(t *testing.T) {
 	mux := &Mux{}
 	cmd := &Command{
-		Variadic: true,
 		Run: func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "%v", call.Tail)
 			return err
 		},
 	}
+	cmd.Tail("patterns", "")
 	mux.Handle("match", "", cmd)
 	var out bytes.Buffer
 	if err := runMux(context.Background(), mux, &out, io.Discard, []string{"match", "a*", "b*", "c*"}); err != nil {
@@ -185,13 +185,13 @@ func TestDoubleDashCanBePositionalArgument(t *testing.T) {
 func TestVariadicPreservesLiteralDoubleDash(t *testing.T) {
 	mux := &Mux{}
 	cmd := &Command{
-		Variadic: true,
 		Run: func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "value=%q tail=%q", call.Args.Get("value"), call.Tail)
 			return err
 		},
 	}
 	cmd.Arg("value", "Leading value")
+	cmd.Tail("rest", "")
 	mux.Handle("echo", "", cmd)
 
 	var out bytes.Buffer
@@ -554,13 +554,13 @@ func TestMuxAnnotationsVisibleAtSelfYield(t *testing.T) {
 func TestCommandRestHoldsUnparsedTokens(t *testing.T) {
 	mux := &Mux{}
 	cmd := &Command{
-		Variadic: true,
 		Run: func(out *Output, call *Call) error {
 			_, err := fmt.Fprintf(out.Stdout, "repo=%s tail=%v", call.Options.Get("repository"), call.Tail)
 			return err
 		},
 	}
 	cmd.Option("repository", "", "", "repo path")
+	cmd.Tail("paths", "")
 	mux.Handle("open", "", cmd)
 
 	var out bytes.Buffer
@@ -653,9 +653,9 @@ func TestProgramMuxRootHandlerWithInheritedOptions(t *testing.T) {
 	var out bytes.Buffer
 	var errout bytes.Buffer
 	program := &Program{
-		Stdout: &out,
-		Stderr: &errout,
-		Usage:  "Run the root command",
+		Stdout:  &out,
+		Stderr:  &errout,
+		Summary: "Run the root command",
 	}
 	if err := program.Invoke(context.Background(), mux, []string{"app", "--host", "unix:///tmp/docker.sock"}); err != nil {
 		t.Fatal(err)
@@ -685,16 +685,60 @@ func TestMuxRejectsFlagOptionNameCollision(t *testing.T) {
 	mux.Option("name", "", "", "option")
 }
 
-func TestProgramMuxRejectsFlagOptionNameCollision(t *testing.T) {
-	mux := &Mux{}
-	mux.Flag("name", "", false, "flag")
+func TestMuxRejectsCrossLevelNegationShadow(t *testing.T) {
+	t.Run("mux flag added after child declares its negation counterpart", func(t *testing.T) {
+		mux := &Mux{}
+		cmd := &Command{Run: func(*Output, *Call) error { return nil }}
+		cmd.Flag("no-verbose", "", false, "")
+		mux.Handle("run", "", cmd)
 
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected panic")
-		}
-	}()
-	mux.Option("name", "", "", "option")
+		defer func() {
+			got := recover()
+			if got == nil {
+				t.Fatal("expected panic for negation cross-level shadow")
+			}
+			if s, ok := got.(string); !ok || !strings.Contains(s, "negation") {
+				t.Fatalf("got panic %v", got)
+			}
+		}()
+		mux.Flag("verbose", "", false, "")
+	})
+
+	t.Run("child declares negation counterpart of mux flag at mount time", func(t *testing.T) {
+		mux := &Mux{}
+		mux.Flag("verbose", "", false, "")
+		cmd := &Command{Run: func(*Output, *Call) error { return nil }}
+		cmd.Flag("no-verbose", "", false, "")
+
+		defer func() {
+			got := recover()
+			if got == nil {
+				t.Fatal("expected panic for negation cross-level shadow")
+			}
+			if s, ok := got.(string); !ok || !strings.Contains(s, "negation") {
+				t.Fatalf("got panic %v", got)
+			}
+		}()
+		mux.Handle("run", "", cmd)
+	})
+
+	t.Run("option side: mux declares no-cache, child declares cache", func(t *testing.T) {
+		mux := &Mux{}
+		cmd := &Command{Run: func(*Output, *Call) error { return nil }}
+		cmd.Option("cache", "", "", "")
+		mux.Handle("run", "", cmd)
+
+		defer func() {
+			got := recover()
+			if got == nil {
+				t.Fatal("expected panic")
+			}
+			if s, ok := got.(string); !ok || !strings.Contains(s, "negation") {
+				t.Fatalf("got panic %v", got)
+			}
+		}()
+		mux.Flag("no-cache", "", false, "")
+	})
 }
 
 func TestMuxRejectsCrossLevelFlagCollision(t *testing.T) {
@@ -932,7 +976,7 @@ func TestNegateFlagsMux(t *testing.T) {
 	}
 }
 
-func TestNegateFlagsHelpShowsBothForms(t *testing.T) {
+func TestNegateFlagsHelpRendersBracketed(t *testing.T) {
 	mux := &Mux{}
 	cmd := &Command{
 		NegateFlags: true,
@@ -947,11 +991,11 @@ func TestNegateFlagsHelpShowsBothForms(t *testing.T) {
 		t.Fatalf("got err=%v", err)
 	}
 	help := stdout.String()
-	if !strings.Contains(help, "--no-accept-dns") {
-		t.Fatalf("help missing --no-accept-dns:\n%s", help)
+	if !strings.Contains(help, "--[no-]accept-dns") {
+		t.Fatalf("help missing --[no-]accept-dns:\n%s", help)
 	}
-	if !strings.Contains(help, "--cache") {
-		t.Fatalf("help missing --cache (negation of --no-cache):\n%s", help)
+	if !strings.Contains(help, "--[no-]cache") {
+		t.Fatalf("help missing --[no-]cache (negation of --no-cache):\n%s", help)
 	}
 }
 
@@ -1133,6 +1177,31 @@ func TestEnvMap_PanicsOnUndeclaredBinding(t *testing.T) {
 	}()
 	noop := &Command{Run: func(*Output, *Call) error { return nil }}
 	EnvMiddleware(map[string]string{"not-declared": "NOPE"}, nil)(noop)
+}
+
+func TestEnvMap_PanicsOnUndeclaredBindingDeterministic(t *testing.T) {
+	// With multiple unknown names, the panic message must always
+	// surface the alphabetically first one regardless of map iteration.
+	noop := &Command{Run: func(*Output, *Call) error { return nil }}
+	want := `"alpha"`
+	for i := range 16 {
+		got := func() (got string) {
+			defer func() {
+				if r := recover(); r != nil {
+					got, _ = r.(string)
+				}
+			}()
+			EnvMiddleware(map[string]string{
+				"zeta":  "Z",
+				"alpha": "A",
+				"mike":  "M",
+			}, nil)(noop)
+			return ""
+		}()
+		if !strings.Contains(got, want) {
+			t.Fatalf("iteration %d: panic should name %s first; got %q", i, want, got)
+		}
+	}
 }
 
 // newDebugFlagCommand builds a Command that declares a "debug" flag.

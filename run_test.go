@@ -101,7 +101,7 @@ func TestInvokeEmptyArgsPanics(t *testing.T) {
 
 func TestWalkPlainRunner(t *testing.T) {
 	runner := RunnerFunc(func(out *Output, call *Call) error { return nil })
-	program := &Program{Usage: "A test app"}
+	program := &Program{Summary: "A test app"}
 
 	var paths []string
 	for help := range program.Walk("app", runner) {
@@ -109,8 +109,8 @@ func TestWalkPlainRunner(t *testing.T) {
 		if help.Name != "app" {
 			t.Fatalf("got name %q", help.Name)
 		}
-		if help.Usage != "A test app" {
-			t.Fatalf("got usage %q", help.Usage)
+		if help.Summary != "A test app" {
+			t.Fatalf("got summary %q", help.Summary)
 		}
 	}
 	if len(paths) != 1 || paths[0] != "app" {
@@ -132,7 +132,7 @@ func TestWalkMux(t *testing.T) {
 
 	mux.Handle("version", "Print version", RunnerFunc(func(*Output, *Call) error { return nil }))
 
-	program := &Program{Usage: "A CLI tool"}
+	program := &Program{Summary: "A CLI tool"}
 
 	var paths []string
 	helpByPath := map[string]*Help{}
@@ -146,10 +146,10 @@ func TestWalkMux(t *testing.T) {
 		t.Fatalf("got paths %v, want %v", paths, wantPaths)
 	}
 
-	// Root has usage and commands.
+	// Root has summary and commands.
 	root := helpByPath["app"]
-	if root.Usage != "A CLI tool" {
-		t.Fatalf("got root usage %q", root.Usage)
+	if root.Summary != "A CLI tool" {
+		t.Fatalf("got root summary %q", root.Summary)
 	}
 	if len(root.Commands) != 2 {
 		t.Fatalf("got %d commands, want 2", len(root.Commands))
@@ -243,7 +243,7 @@ func (c *customWalker) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner
 		if !yield(&Help{
 			Name:        c.name,
 			FullPath:    path,
-			Usage:       base.Usage,
+			Summary:     base.Summary,
 			Description: base.Description,
 			Flags:       slices.Clone(base.Flags),
 			Options:     slices.Clone(base.Options),
@@ -253,7 +253,7 @@ func (c *customWalker) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner
 		yield(&Help{
 			Name:     "static-child",
 			FullPath: path + " static-child",
-			Usage:    "A synthetic child",
+			Summary:  "A synthetic child",
 			Flags:    slices.Clone(base.Flags),
 			Options:  slices.Clone(base.Options),
 		}, c)
@@ -262,7 +262,7 @@ func (c *customWalker) WalkArgv(path string, base *Help) iter.Seq2[*Help, Runner
 
 func TestWalkCustomWalker(t *testing.T) {
 	// Top-level external Walker: Program.Walk dispatches via the interface.
-	program := &Program{Usage: "Custom CLI"}
+	program := &Program{Summary: "Custom CLI"}
 	cw := &customWalker{name: "app"}
 
 	var paths []string

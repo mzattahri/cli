@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // ErrHelp indicates that help output was displayed instead of running
@@ -97,11 +98,15 @@ func Errorf(code int, format string, args ...any) *ExitError {
 }
 
 // Exit terminates the program with an exit code derived from err.
-// A nil err exits zero. An err wrapping [ErrHelp] exits with
-// [ExitUsage] and prints nothing; the help renderer has already
-// written to stderr. An err wrapping an [*ExitError] exits with
-// the wrapped Code, printing err to [os.Stderr]. Any other non-nil
-// err exits with [ExitFailure], also printing err to [os.Stderr].
+// A nil err exits zero. An err whose only content is [ErrHelp] exits
+// with [ExitUsage] and prints nothing; the help renderer has already
+// written to stderr. An err carrying [ErrHelp] joined with one or
+// more non-help errors (e.g. a renderer write failure surfaced by
+// [Program.Invoke]) prints the non-help portions to [os.Stderr] and
+// still exits with [ExitUsage]. An err wrapping an [*ExitError] exits
+// with the wrapped Code, printing err to [os.Stderr]. Any other
+// non-nil err exits with [ExitFailure], also printing err to
+// [os.Stderr].
 //
 // Exit calls [os.Exit] directly; deferred functions do not run.
 // Most callers want [Program.Run] instead, which composes
@@ -113,10 +118,43 @@ func Exit(err error) {
 	if errors.As(err, &e) && e == nil {
 		err = nil
 	}
-	if err != nil && !errors.Is(err, ErrHelp) {
-		fmt.Fprintln(os.Stderr, err)
+	if msg := messageExceptHelp(err); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
 	}
 	os.Exit(exitCode(err))
+}
+
+// messageExceptHelp returns err's diagnostic with [ErrHelp] portions
+// removed. It traverses [*ExitError] and [errors.Join] structures so
+// a help-plus-renderer-error pair produced by [Program.Invoke] still
+// surfaces the renderer message. Returns "" when err carries only
+// help information.
+func messageExceptHelp(err error) string {
+	if err == nil {
+		return ""
+	}
+	if e, ok := err.(*ExitError); ok && e != nil {
+		if e.Err == nil {
+			if errors.Is(err, ErrHelp) {
+				return ""
+			}
+			return e.Error()
+		}
+		return messageExceptHelp(e.Err)
+	}
+	if mu, ok := err.(interface{ Unwrap() []error }); ok {
+		var parts []string
+		for _, child := range mu.Unwrap() {
+			if msg := messageExceptHelp(child); msg != "" {
+				parts = append(parts, msg)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	if errors.Is(err, ErrHelp) {
+		return ""
+	}
+	return err.Error()
 }
 
 // exitCode maps err to a process exit code: 0 for nil, [ExitUsage] for

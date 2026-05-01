@@ -175,12 +175,12 @@ func TestCommandInputsReturnPointersToFields(t *testing.T) {
 
 func TestCommandWithAllInputTypes(t *testing.T) {
 	cmd := &Command{
-		Run:         func(*Output, *Call) error { return nil },
-		Variadic: true,
+		Run: func(*Output, *Call) error { return nil },
 	}
 	cmd.Flag("verbose", "", false, "verbose output")
 	cmd.Option("host", "", "", "daemon socket")
 	cmd.Arg("name", "user name")
+	cmd.Tail("rest", "")
 
 	fs, os, as := cmd.inputs()
 	if got := fs.names(); len(got) != 1 || got[0] != "verbose" {
@@ -192,8 +192,8 @@ func TestCommandWithAllInputTypes(t *testing.T) {
 	if got := as.helpArguments(); len(got) != 1 || got[0].Name != "<name>" {
 		t.Fatalf("got %v", got)
 	}
-	if !cmd.Variadic {
-		t.Fatal("expected capture rest")
+	if cmd.tail == nil {
+		t.Fatal("expected tail to be set")
 	}
 }
 

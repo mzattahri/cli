@@ -5,7 +5,7 @@ Create, clone, and manage git repositories.
 Usage:
   app repo [command] [options]
 
-Inherited Flags:
+Global Options:
   -v, --verbose  Verbose output
 
 Commands:

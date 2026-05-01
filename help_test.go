@@ -10,7 +10,7 @@ func TestDefaultHelpRender(t *testing.T) {
 	help := &Help{
 		Name:     "app",
 		FullPath: "app",
-		Usage:    "A test application.",
+		Summary:  "A test application.",
 		Flags: []HelpFlag{
 			{Name: "verbose", Short: "v", Usage: "Enable verbose output", Default: false, Inherited: true},
 			{Name: "force", Short: "f", Usage: "Force operation", Default: false},
@@ -19,8 +19,8 @@ func TestDefaultHelpRender(t *testing.T) {
 			{Name: "repository", Short: "r", Usage: "Repository path", Default: "", Inherited: true},
 		},
 		Commands: []HelpCommand{
-			{Name: "init", Usage: "Initialize"},
-			{Name: "ls", Usage: "List entries"},
+			{Name: "init", Summary: "Initialize"},
+			{Name: "ls", Summary: "List entries"},
 		},
 		Arguments: []HelpArg{
 			{Name: "<name>", Usage: "Repository name"},
@@ -31,7 +31,7 @@ func TestDefaultHelpRender(t *testing.T) {
 	DefaultHelpFunc(&buf, help)
 
 	out := buf.String()
-	for _, want := range []string{"app", "init", "ls", "<name>", "-v, --verbose", "-r, --repository", "-f, --force", "Inherited Flags:", "Inherited Options:", "Flags:", "A test application."} {
+	for _, want := range []string{"app", "init", "ls", "<name>", "-v, --verbose", "-r, --repository <repository>", "-f, --force", "Options:", "Global Options:", "A test application."} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}
@@ -42,7 +42,7 @@ func TestDefaultHelpRenderOmitsArgumentsWhenAbsent(t *testing.T) {
 	help := &Help{
 		Name:     "app",
 		FullPath: "app status",
-		Usage:    "Show status.",
+		Summary:  "Show status.",
 	}
 
 	var buf bytes.Buffer
@@ -59,7 +59,7 @@ func TestDefaultHelpPrintsDescription(t *testing.T) {
 	help := &Help{
 		Name:        "app",
 		FullPath:    "app",
-		Usage:       "Show status.",
+		Summary:     "Show status.",
 		Description: desc,
 	}
 
@@ -76,7 +76,7 @@ func TestDefaultHelpAlignsMultilineUsage(t *testing.T) {
 	help := &Help{
 		Name:     "app",
 		FullPath: "app",
-		Usage:    "Show status.",
+		Summary:  "Show status.",
 		Flags: []HelpFlag{
 			{Name: "verbose", Short: "v", Usage: "Enable verbose output\nAlso prints debug events.", Default: false, Inherited: true},
 			{Name: "force", Short: "f", Usage: "Force operation\nSkips checks.", Default: false},
@@ -89,7 +89,7 @@ func TestDefaultHelpAlignsMultilineUsage(t *testing.T) {
 			{Name: "<name>", Usage: "Repository name\nMust already exist."},
 		},
 		Commands: []HelpCommand{
-			{Name: "status", Usage: "Show status\nIncludes workspace checks."},
+			{Name: "status", Summary: "Show status\nIncludes workspace checks."},
 		},
 	}
 
@@ -98,10 +98,10 @@ func TestDefaultHelpAlignsMultilineUsage(t *testing.T) {
 
 	out := buf.String()
 	for _, want := range []string{
-		"  -v, --verbose  Enable verbose output\n                 Also prints debug events.",
-		"  -r, --repository  Repository path\n                    Can be relative.",
-		"  -f, --force  Force operation\n               Skips checks.",
-		"  -c, --config  Configuration file\n                Can be relative.",
+		"  -v, --verbose                  Enable verbose output\n                                 Also prints debug events.",
+		"  -r, --repository <repository>  Repository path\n                                 Can be relative.",
+		"  -f, --force            Force operation\n                         Skips checks.",
+		"  -c, --config <config>  Configuration file\n                         Can be relative.",
 		"  <name>  Repository name\n          Must already exist.",
 		"  status  Show status\n          Includes workspace checks.",
 	} {
@@ -115,7 +115,7 @@ func TestDefaultHelpPreservesArgumentOrder(t *testing.T) {
 	help := &Help{
 		Name:     "app",
 		FullPath: "app copy",
-		Usage:    "Copy files.",
+		Summary:  "Copy files.",
 		Arguments: []HelpArg{
 			{Name: "<src>", Usage: "Source path"},
 			{Name: "<dst>", Usage: "Destination path"},

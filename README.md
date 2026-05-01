@@ -38,7 +38,7 @@ func main() {
 	greet.Arg("name", "Who to greet")
 	mux.Handle("greet", "Say hello", greet)
 
-	(&argv.Program{Usage: "A demo CLI"}).Run(ctx, mux, os.Args)
+	(&argv.Program{Summary: "A demo CLI"}).Run(ctx, mux, os.Args)
 }
 ```
 
@@ -89,7 +89,7 @@ mux.Handle("complete", "Output completions", argv.CompletionCommand(mux))
 
 ```go
 for help, _ := range (&argv.Program{}).Walk("app", mux) {
-	fmt.Printf("%s: %s\n", help.FullPath, help.Usage)
+	fmt.Printf("%s: %s\n", help.FullPath, help.Summary)
 }
 ```
 

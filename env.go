@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -70,7 +71,14 @@ func EnvMiddleware(env map[string]string, lookup LookupFunc) Middleware {
 			panic("argv: EnvMiddleware: wrapped runner must implement Walker")
 		}
 		flagNames, optionNames := classifyInputs(walker)
+		// Iterate sorted so the panic message is deterministic when the
+		// caller's env map carries multiple unknown names.
+		names := make([]string, 0, len(env))
 		for name := range env {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		for _, name := range names {
 			if !flagNames[name] && !optionNames[name] {
 				panic(fmt.Sprintf("argv: EnvMiddleware: %q is not a declared flag or option", name))
 			}

@@ -3,6 +3,6 @@ app arg - Short
 Usage:
   app arg [options]
 
-Flags:
+Options:
   -v, --verbose  Line one of usage.
                  Line two of usage.

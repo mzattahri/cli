@@ -21,7 +21,6 @@ func TestCallStringCanonicalizesParsedCall(t *testing.T) {
 	mux.Option("config", "c", "", "config")
 
 	cmd := &Command{
-		Variadic: true,
 		Run: func(out *Output, call *Call) error {
 			_, err := out.Stdout.Write([]byte(call.String()))
 			return err
@@ -32,6 +31,7 @@ func TestCallStringCanonicalizesParsedCall(t *testing.T) {
 	cmd.Option("tag", "t", "", "tag")
 	cmd.Arg("image", "image")
 	cmd.Arg("target", "target")
+	cmd.Tail("rest", "")
 	mux.Handle("deploy", "", cmd)
 
 	var out bytes.Buffer

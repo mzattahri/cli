@@ -24,8 +24,8 @@ type Program struct {
 	// Stdin is the standard input reader. A nil Stdin selects [os.Stdin].
 	Stdin io.Reader
 
-	// Usage is the short summary shown in top-level help output.
-	Usage string
+	// Summary is the short one-line description shown in top-level help output.
+	Summary string
 
 	// Description is the longer free-form help text.
 	Description string
@@ -136,7 +136,7 @@ func (p *Program) Invoke(ctx context.Context, runner Runner, args []string) erro
 // enumeration and writes it via [Program.HelpFunc] (or
 // [DefaultHelpFunc]). Explicit help requests write to stdout;
 // implicit ones (shown in lieu of running) write to stderr. It falls
-// back to a minimal Help built from [Program.Usage] and
+// back to a minimal Help built from [Program.Summary] and
 // [Program.Description] when runner does not implement Walker. The
 // returned error is whatever the renderer returned, propagated up by
 // [Program.Invoke] so a failed write surfaces.
@@ -150,7 +150,7 @@ func (p *Program) renderHelp(out *Output, runner Runner, programName, path strin
 		w = out.Stdout
 	}
 	if walker, ok := runner.(Walker); ok {
-		for help := range walker.WalkArgv(programName, &Help{Usage: p.Usage, Description: p.Description}) {
+		for help := range walker.WalkArgv(programName, &Help{Summary: p.Summary, Description: p.Description}) {
 			if help.FullPath == path {
 				return renderer(w, help)
 			}
@@ -167,7 +167,7 @@ func (p *Program) renderHelp(out *Output, runner Runner, programName, path strin
 	help := &Help{
 		Name:        lastPathSegment(path),
 		FullPath:    path,
-		Usage:       p.Usage,
+		Summary:     p.Summary,
 		Description: p.Description,
 	}
 	if h, ok := runner.(Helper); ok {
@@ -184,14 +184,14 @@ func (p *Program) renderHelp(out *Output, runner Runner, programName, path strin
 // nodes depth-first, sorted alphabetically at each level.
 //
 // Walk delegates to runner's [Walker] implementation. A Runner that
-// does not implement Walker yields a single entry using [Program.Usage]
+// does not implement Walker yields a single entry using [Program.Summary]
 // and [Program.Description]. Walk panics if name is empty.
 func (p *Program) Walk(name string, runner Runner) iter.Seq2[*Help, Runner] {
 	if name == "" {
 		panic("argv: Program.Walk requires a non-empty name")
 	}
 	return func(yield func(*Help, Runner) bool) {
-		base := &Help{Usage: p.Usage, Description: p.Description}
+		base := &Help{Summary: p.Summary, Description: p.Description}
 
 		if w, ok := runner.(Walker); ok {
 			first := true
@@ -210,7 +210,7 @@ func (p *Program) Walk(name string, runner Runner) iter.Seq2[*Help, Runner] {
 		yield(&Help{
 			Name:        name,
 			FullPath:    name,
-			Usage:       p.Usage,
+			Summary:     p.Summary,
 			Description: p.Description,
 		}, runner)
 	}
@@ -223,7 +223,7 @@ func walkChildren(n *node, basePath string, ancestorFlags []HelpFlag, ancestorOp
 
 		if w, ok := cn.commandRunner().(Walker); ok {
 			childBase := &Help{
-				Usage:       cn.usage(),
+				Summary:     cn.summary(),
 				Description: cn.description(),
 				Flags:       ancestorFlags,
 				Options:     ancestorOptions,
@@ -264,9 +264,9 @@ func buildNodeHelp(n *node, name, fullPath string, inheritedFlags []HelpFlag, in
 	help := &Help{
 		Name:        name,
 		FullPath:    fullPath,
-		Usage:       n.usage(),
+		Summary:     n.summary(),
 		Description: n.description(),
-		Commands:    n.usageCommands(""),
+		Commands:    n.summaryCommands(""),
 		Flags:       slices.Clone(inheritedFlags),
 		Options:     slices.Clone(inheritedOptions),
 	}

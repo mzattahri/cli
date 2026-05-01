@@ -61,7 +61,7 @@ func main() {
 	)
 
 	program := &argv.Program{
-		Usage: "Manage a list of todos",
+		Summary: "Manage a list of todos",
 		Description: "todo is a small worked example that ships with argv. " +
 			"It demonstrates mux-level globals, mounted sub-muxes, " +
 			"EnvMiddleware fallback, and shell-completion wiring.\n\n" +
